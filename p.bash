@@ -4,13 +4,11 @@
 #   p foo      - cd to project matching "foo" (substring, case-insensitive)
 #   p foo<Tab> - tab-complete project names (prefix match)
 
-p() {
+# Returns all project directory paths (one per line)
+_p_find_all_dirs() {
   local base="$HOME/projects"
-  local query="$1"
-
-  # Find leaf project dirs (contain a project marker, exclude build artifacts)
-  local dirs
-  dirs=$(find "$base" -maxdepth 5 -type f \( \
+  local marker_dirs
+  marker_dirs=$(find "$base" -maxdepth 5 -type f \( \
     -name 'package.json' -o -name 'Cargo.toml' -o -name 'go.mod' \
     -o -name 'pyproject.toml' -o -name 'Makefile' \
   \) -not -path '*/node_modules/*' -not -path '*/.next/*' \
@@ -18,49 +16,119 @@ p() {
      -not -path '*/target/*' -not -path '*/.cache/*' \
   | sed 's|/[^/]*$||' | sort -u)
 
-  # Also include dirs with .git (find -name .git -type d)
   local git_dirs
   git_dirs=$(find "$base" -maxdepth 5 -name '.git' -type d \
     -not -path '*/node_modules/*' \
   | sed 's|/\.git$||' | sort -u)
 
-  # Merge and deduplicate
-  dirs=$(printf '%s\n%s' "$dirs" "$git_dirs" | sort -u | grep -v '^$')
+  printf '%s\n%s' "$marker_dirs" "$git_dirs" | sort -u | grep -v '^$'
+}
 
-  # Filter by query if provided
-  if [[ -n "$query" ]]; then
-    dirs=$(echo "$dirs" | while IFS= read -r d; do
-      local name="${d##*/}"
-      if [[ "${name,,}" == *"${query,,}"* ]]; then
-        echo "$d"
+# Classifies dirs as S (standalone) or P (sub-package)
+# A dir is a sub-package if any other dir is a proper parent of it
+_p_classify_dirs() {
+  local all_dirs="$1"
+  local dirs_arr=()
+  while IFS= read -r d; do
+    [[ -n "$d" ]] && dirs_arr+=("$d")
+  done <<< "$all_dirs"
+
+  local d other
+  for d in "${dirs_arr[@]}"; do
+    local is_subpkg=false
+    for other in "${dirs_arr[@]}"; do
+      if [[ "$d" != "$other" && "$d" == "$other/"* ]]; then
+        is_subpkg=true
+        break
       fi
-    done)
+    done
+    if $is_subpkg; then
+      echo "P $d"
+    else
+      echo "S $d"
+    fi
+  done
+}
+
+p() {
+  local base="$HOME/projects"
+  local query="$1"
+
+  local all_dirs
+  all_dirs=$(_p_find_all_dirs)
+
+  local classified
+  classified=$(_p_classify_dirs "$all_dirs")
+
+  # Parse into standalone and subpkg arrays
+  local standalone=() subpkg=()
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    local tag="${line%% *}"
+    local path="${line#* }"
+    if [[ "$tag" == "S" ]]; then
+      standalone+=("$path")
+    else
+      subpkg+=("$path")
+    fi
+  done <<< "$classified"
+
+  local matches=()
+
+  if [[ -n "$query" ]]; then
+    local q="${query,,}"
+
+    # Phase 1: basename match
+    local sa_basename=() sp_basename=()
+    for d in "${standalone[@]}"; do
+      local name="${d##*/}"
+      [[ "${name,,}" == *"$q"* ]] && sa_basename+=("$d")
+    done
+    for d in "${subpkg[@]}"; do
+      local name="${d##*/}"
+      [[ "${name,,}" == *"$q"* ]] && sp_basename+=("$d")
+    done
+
+    if (( ${#sa_basename[@]} + ${#sp_basename[@]} > 0 )); then
+      matches=("${sa_basename[@]}" "${sp_basename[@]}")
+    else
+      # Phase 2: relative path fallback
+      local sa_path=() sp_path=()
+      for d in "${standalone[@]}"; do
+        local rel="${d#$base/}"
+        [[ "${rel,,}" == *"$q"* ]] && sa_path+=("$d")
+      done
+      for d in "${subpkg[@]}"; do
+        local rel="${d#$base/}"
+        [[ "${rel,,}" == *"$q"* ]] && sp_path+=("$d")
+      done
+      matches=("${sa_path[@]}" "${sp_path[@]}")
+    fi
+  else
+    # No query: all dirs, standalone first
+    matches=("${standalone[@]}" "${subpkg[@]}")
   fi
 
-  # Count matches
-  local count
-  count=$(echo "$dirs" | grep -c .)
+  local count=${#matches[@]}
 
   if [[ "$count" -eq 0 ]]; then
     echo "No projects matching '$query'"
     return 1
   elif [[ "$count" -eq 1 ]]; then
-    cd "$dirs" || return 1
+    cd "${matches[0]}" || return 1
     echo "→ $(pwd)"
   else
     echo "Multiple matches:"
     local i=1
-    local arr=()
-    while IFS= read -r d; do
+    for d in "${matches[@]}"; do
       local rel="${d#$base/}"
       printf "  %d) %s\n" "$i" "$rel"
-      arr+=("$d")
       ((i++))
-    done <<< "$dirs"
+    done
     echo ""
     read -rp "Pick [1-$count]: " choice
     if [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= count )); then
-      cd "${arr[$((choice-1))]}" || return 1
+      cd "${matches[$((choice-1))]}" || return 1
       echo "→ $(pwd)"
     else
       echo "Cancelled."
@@ -71,30 +139,121 @@ p() {
 
 _p_completion() {
   local cur="${COMP_WORDS[COMP_CWORD]}"
-  local base="$HOME/projects"
   local cache_file="/tmp/_p_completion_cache_$(id -u)"
   local cache_ttl=300
 
   # Rebuild cache if missing or stale (>5 min)
   if [[ ! -f "$cache_file" ]] || \
      [[ $(( $(date +%s) - $(stat -c %Y "$cache_file") )) -gt $cache_ttl ]]; then
+    local all_dirs classified
+    all_dirs=$(_p_find_all_dirs)
+    classified=$(_p_classify_dirs "$all_dirs")
+
+    # Standalone basenames sorted, then sub-package basenames sorted, deduped
     {
-      find "$base" -maxdepth 5 -type f \( \
-        -name 'package.json' -o -name 'Cargo.toml' -o -name 'go.mod' \
-        -o -name 'pyproject.toml' -o -name 'Makefile' \
-      \) -not -path '*/node_modules/*' -not -path '*/.next/*' \
-         -not -path '*/.nuxt/*' -not -path '*/dist/*' \
-         -not -path '*/target/*' -not -path '*/.cache/*' \
-      | sed 's|/[^/]*$||'
-      find "$base" -maxdepth 5 -name '.git' -type d \
-        -not -path '*/node_modules/*' \
-      | sed 's|/\.git$||'
-    } | sort -u | grep -v '^$' | xargs -I{} basename {} | sort -u > "$cache_file"
+      echo "$classified" | grep '^S ' | sed 's|^S .*/||' | sort
+      echo "$classified" | grep '^P ' | sed 's|^P .*/||' | sort
+    } | awk '!seen[$0]++' > "$cache_file"
   fi
 
   COMPREPLY=( $(compgen -W "$(cat "$cache_file")" -- "$cur") )
 }
 complete -F _p_completion p
+
+# sp - search if a project exists within ~/projects top-level categories
+# Usage: sp <query>
+#   sp foo      - search for directories matching "foo" within category folders
+#   sp foo<Tab> - tab-complete project names (prefix match)
+sp() {
+  local base="$HOME/projects"
+  local query="$1"
+
+  if [[ -z "$query" ]]; then
+    echo "Usage: sp <query>"
+    echo "Search for projects within ~/projects category directories."
+    return 1
+  fi
+
+  local q="${query,,}"
+
+  # Collect top-level category dirs
+  local top_dirs=()
+  for d in "$base"/*/; do
+    [[ -d "$d" ]] && top_dirs+=("$d")
+  done
+
+  # Search within each category (depth 2-3 to cover flat + lifecycle + sandbox)
+  local matches=()
+  for top in "${top_dirs[@]}"; do
+    while IFS= read -r dir; do
+      [[ -z "$dir" ]] && continue
+      local name="${dir##*/}"
+      [[ "${name,,}" == *"$q"* ]] && matches+=("$dir")
+    done < <(find "$top" -mindepth 1 -maxdepth 3 -type d \
+      -not -path '*/node_modules/*' -not -path '*/.next/*' \
+      -not -path '*/.nuxt/*' -not -path '*/dist/*' \
+      -not -path '*/target/*' -not -path '*/.cache/*' \
+      -not -path '*/.git/*' -not -path '*/.*' \
+      2>/dev/null)
+  done
+
+  # Deduplicate and sort
+  local unique=()
+  local seen=()
+  for m in "${matches[@]}"; do
+    local already=false
+    for s in "${seen[@]}"; do
+      [[ "$m" == "$s" ]] && already=true && break
+    done
+    $already || { unique+=("$m"); seen+=("$m"); }
+  done
+  matches=("${unique[@]}")
+
+  local count=${#matches[@]}
+
+  if [[ "$count" -eq 0 ]]; then
+    echo "No projects matching '$query' found."
+    return 1
+  fi
+
+  echo "Found $count match(es) for '$query':"
+  echo ""
+  local i=1
+  for d in "${matches[@]}"; do
+    local rel="${d#$base/}"
+    local name="${d##*/}"
+    printf "  %d) %s\n" "$i" "$name"
+    printf "     %s\n" "$rel"
+    ((i++))
+  done
+  echo ""
+  read -rp "cd to a project? [1-$count / n]: " choice
+  if [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= count )); then
+    cd "${matches[$((choice-1))]}" || return 1
+    echo "→ $(pwd)"
+  else
+    echo "Done."
+  fi
+}
+
+_sp_completion() {
+  local cur="${COMP_WORDS[COMP_CWORD]}"
+  local cache_file="/tmp/_sp_completion_cache_$(id -u)"
+  local cache_ttl=300
+
+  if [[ ! -f "$cache_file" ]] || \
+     [[ $(( $(date +%s) - $(stat -c %Y "$cache_file") )) -gt $cache_ttl ]]; then
+    find "$HOME/projects" -mindepth 2 -maxdepth 4 -type d \
+      -not -path '*/node_modules/*' -not -path '*/.next/*' \
+      -not -path '*/.nuxt/*' -not -path '*/dist/*' \
+      -not -path '*/target/*' -not -path '*/.cache/*' \
+      -not -path '*/.git/*' -not -path '*/.*' \
+      2>/dev/null | sed 's|.*/||' | sort -u > "$cache_file"
+  fi
+
+  COMPREPLY=( $(compgen -W "$(cat "$cache_file")" -- "$cur") )
+}
+complete -F _sp_completion sp
 
 np() {
   local base="$HOME/projects"
