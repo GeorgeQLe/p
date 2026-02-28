@@ -99,29 +99,30 @@ complete -F _p_completion p
 np() {
   local base="$HOME/projects"
 
-  # Categories: name|type (lifecycle, flat, sandbox)
+  # Categories: name|type|description (lifecycle, flat, sandbox)
   local categories=(
-    "_archive|flat"
-    "clones|flat"
-    "engines|flat"
-    "games|lifecycle"
-    "gcanbuild|flat"
-    "libs|flat"
-    "mobile|lifecycle"
-    "poke|lifecycle"
-    "sandbox|sandbox"
-    "scripts|flat"
-    "starters|flat"
-    "static-web|lifecycle"
-    "tools|lifecycle"
-    "web|lifecycle"
+    "clones|flat|Followed tutorials and cloned repos"
+    "engines|flat|Game and app engines"
+    "games|lifecycle|Video game projects"
+    "gcanbuild|flat|YouTube channel content"
+    "libs|flat|Reusable libraries and SDKs"
+    "mobile|lifecycle|Mobile apps"
+    "poke|lifecycle|Poke-branded apps"
+    "sandbox|sandbox|Experiments and learning"
+    "scripts|flat|CLI tools and dev utilities"
+    "starters|flat|Reusable project templates"
+    "static-web|lifecycle|Static websites and landing pages"
+    "tools|lifecycle|Desktop and CLI tools"
+    "web|lifecycle|Web applications"
   )
 
   local sandbox_types=("web" "games" "tools")
 
-  # 1. Get project name
-  local name
-  read -rp "Project name (kebab-case): " name
+  # 1. Get project name (accept as argument or prompt)
+  local name="${1:-}"
+  if [[ -z "$name" ]]; then
+    read -rp "Project name (kebab-case): " name
+  fi
   if [[ -z "$name" ]] || [[ ! "$name" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
     echo "Invalid name. Use lowercase letters, numbers, and hyphens."
     return 1
@@ -133,7 +134,8 @@ np() {
   local i=1
   for entry in "${categories[@]}"; do
     local cat_name="${entry%%|*}"
-    printf "  %2d) %s\n" "$i" "$cat_name"
+    local cat_desc="${entry##*|}"
+    printf "  %2d) %-12s %s\n" "$i" "$cat_name" "$cat_desc"
     ((i++))
   done
   echo ""
@@ -145,7 +147,8 @@ np() {
 
   local selected="${categories[$((choice-1))]}"
   local cat_name="${selected%%|*}"
-  local cat_type="${selected##*|}"
+  local remainder="${selected#*|}"
+  local cat_type="${remainder%%|*}"
 
   # 3. Build target path
   local target
@@ -180,12 +183,26 @@ np() {
     return 1
   fi
 
-  # 5. Create and enter
+  # 5. Optional git init
+  read -n1 -rp "Initialize git repo? (y/n) " do_git
+  echo ""
+
+  # 6. Confirm and create
+  echo ""
+  echo "  Name:  $name"
+  echo "  Path:  ${target#$base/}"
+  echo "  Git:   $([[ "$do_git" =~ ^[Yy]$ ]] && echo "yes" || echo "no")"
+  echo ""
+  read -n1 -rp "Create project? (y/n) " confirm
+  echo ""
+  if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+    echo "Cancelled."
+    return 1
+  fi
+
   mkdir -p "$target"
   echo "Created: ${target#$base/}"
 
-  # 6. Optional git init
-  read -rp "Initialize git repo? (y/n): " do_git
   if [[ "$do_git" =~ ^[Yy]$ ]]; then
     git -C "$target" init
   fi
