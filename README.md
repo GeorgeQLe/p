@@ -25,3 +25,19 @@ p foo<Tab>     # tab-complete project names (prefix match)
 ```
 
 Detects projects by the presence of `package.json`, `Cargo.toml`, `go.mod`, `pyproject.toml`, `Makefile`, or `.git`. Tab completion uses a 5-minute cache to stay fast.
+
+### `np` — new project scaffolder
+
+Interactive function to create a new project directory in the right location based on category rules.
+
+```bash
+np    # prompts for name, category, and optional git init
+```
+
+Categories are organized by type:
+
+- **Lifecycle-tracked** (`games/`, `mobile/`, `poke/`, `static-web/`, `tools/`, `web/`) — new projects go in `<category>/dev/<name>`
+- **Flat** (`_archive/`, `clones/`, `engines/`, `gcanbuild/`, `libs/`, `scripts/`, `starters/`) — projects go directly in `<category>/<name>`
+- **Sandbox** — prompts for a sub-type (`web`, `games`, `tools`) and places in `sandbox/<type>/<name>`
+
+Validates kebab-case naming and checks for existing directories before creating.

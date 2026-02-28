@@ -95,3 +95,101 @@ _p_completion() {
   COMPREPLY=( $(compgen -W "$(cat "$cache_file")" -- "$cur") )
 }
 complete -F _p_completion p
+
+np() {
+  local base="$HOME/projects"
+
+  # Categories: name|type (lifecycle, flat, sandbox)
+  local categories=(
+    "_archive|flat"
+    "clones|flat"
+    "engines|flat"
+    "games|lifecycle"
+    "gcanbuild|flat"
+    "libs|flat"
+    "mobile|lifecycle"
+    "poke|lifecycle"
+    "sandbox|sandbox"
+    "scripts|flat"
+    "starters|flat"
+    "static-web|lifecycle"
+    "tools|lifecycle"
+    "web|lifecycle"
+  )
+
+  local sandbox_types=("web" "games" "tools")
+
+  # 1. Get project name
+  local name
+  read -rp "Project name (kebab-case): " name
+  if [[ -z "$name" ]] || [[ ! "$name" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
+    echo "Invalid name. Use lowercase letters, numbers, and hyphens."
+    return 1
+  fi
+
+  # 2. Pick category
+  echo ""
+  echo "Categories:"
+  local i=1
+  for entry in "${categories[@]}"; do
+    local cat_name="${entry%%|*}"
+    printf "  %2d) %s\n" "$i" "$cat_name"
+    ((i++))
+  done
+  echo ""
+  read -rp "Pick [1-${#categories[@]}]: " choice
+  if [[ ! "$choice" =~ ^[0-9]+$ ]] || (( choice < 1 || choice > ${#categories[@]} )); then
+    echo "Cancelled."
+    return 1
+  fi
+
+  local selected="${categories[$((choice-1))]}"
+  local cat_name="${selected%%|*}"
+  local cat_type="${selected##*|}"
+
+  # 3. Build target path
+  local target
+  case "$cat_type" in
+    lifecycle)
+      target="$base/$cat_name/dev/$name"
+      ;;
+    sandbox)
+      echo ""
+      echo "Sandbox type:"
+      local j=1
+      for st in "${sandbox_types[@]}"; do
+        printf "  %d) %s\n" "$j" "$st"
+        ((j++))
+      done
+      echo ""
+      read -rp "Pick [1-${#sandbox_types[@]}]: " st_choice
+      if [[ ! "$st_choice" =~ ^[0-9]+$ ]] || (( st_choice < 1 || st_choice > ${#sandbox_types[@]} )); then
+        echo "Cancelled."
+        return 1
+      fi
+      target="$base/sandbox/${sandbox_types[$((st_choice-1))]}/$name"
+      ;;
+    flat)
+      target="$base/$cat_name/$name"
+      ;;
+  esac
+
+  # 4. Check if already exists
+  if [[ -d "$target" ]]; then
+    echo "Directory already exists: $target"
+    return 1
+  fi
+
+  # 5. Create and enter
+  mkdir -p "$target"
+  echo "Created: ${target#$base/}"
+
+  # 6. Optional git init
+  read -rp "Initialize git repo? (y/n): " do_git
+  if [[ "$do_git" =~ ^[Yy]$ ]]; then
+    git -C "$target" init
+  fi
+
+  cd "$target" || return 1
+  echo "→ $(pwd)"
+}
