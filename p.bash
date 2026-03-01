@@ -7,21 +7,9 @@
 # Returns all project directory paths (one per line)
 _p_find_all_dirs() {
   local base="$HOME/projects"
-  local marker_dirs
-  marker_dirs=$(find "$base" -maxdepth 5 -type f \( \
-    -name 'package.json' -o -name 'Cargo.toml' -o -name 'go.mod' \
-    -o -name 'pyproject.toml' -o -name 'Makefile' \
-  \) -not -path '*/node_modules/*' -not -path '*/.next/*' \
-     -not -path '*/.nuxt/*' -not -path '*/dist/*' \
-     -not -path '*/target/*' -not -path '*/.cache/*' \
-  | sed 's|/[^/]*$||' | sort -u)
-
-  local git_dirs
-  git_dirs=$(find "$base" -maxdepth 5 -name '.git' -type d \
+  find "$base" -maxdepth 5 -name '.git' -type d \
     -not -path '*/node_modules/*' \
-  | sed 's|/\.git$||' | sort -u)
-
-  printf '%s\n%s' "$marker_dirs" "$git_dirs" | sort -u | grep -v '^$'
+  | sed 's|/\.git$||' | sort -u
 }
 
 # Classifies dirs as S (standalone) or P (sub-package)
@@ -189,12 +177,9 @@ sp() {
       [[ -z "$dir" ]] && continue
       local name="${dir##*/}"
       [[ "${name,,}" == *"$q"* ]] && matches+=("$dir")
-    done < <(find "$top" -mindepth 1 -maxdepth 3 -type d \
-      -not -path '*/node_modules/*' -not -path '*/.next/*' \
-      -not -path '*/.nuxt/*' -not -path '*/dist/*' \
-      -not -path '*/target/*' -not -path '*/.cache/*' \
-      -not -path '*/.git/*' -not -path '*/.*' \
-      2>/dev/null)
+    done < <(find "$top" -maxdepth 4 -name '.git' -type d \
+      -not -path '*/node_modules/*' \
+      2>/dev/null | sed 's|/\.git$||')
   done
 
   # Deduplicate and sort
@@ -243,12 +228,9 @@ _sp_completion() {
 
   if [[ ! -f "$cache_file" ]] || \
      [[ $(( $(date +%s) - $(stat -c %Y "$cache_file") )) -gt $cache_ttl ]]; then
-    find "$HOME/projects" -mindepth 2 -maxdepth 4 -type d \
-      -not -path '*/node_modules/*' -not -path '*/.next/*' \
-      -not -path '*/.nuxt/*' -not -path '*/dist/*' \
-      -not -path '*/target/*' -not -path '*/.cache/*' \
-      -not -path '*/.git/*' -not -path '*/.*' \
-      2>/dev/null | sed 's|.*/||' | sort -u > "$cache_file"
+    find "$HOME/projects" -mindepth 2 -maxdepth 5 -name '.git' -type d \
+      -not -path '*/node_modules/*' \
+      2>/dev/null | sed 's|/\.git$||' | sed 's|.*/||' | sort -u > "$cache_file"
   fi
 
   COMPREPLY=( $(compgen -W "$(cat "$cache_file")" -- "$cur") )
@@ -342,15 +324,10 @@ np() {
     return 1
   fi
 
-  # 5. Optional git init
-  read -n1 -rp "Initialize git repo? (y/n) " do_git
-  echo ""
-
-  # 6. Confirm and create
+  # 5. Confirm and create
   echo ""
   echo "  Name:  $name"
   echo "  Path:  ${target#$base/}"
-  echo "  Git:   $([[ "$do_git" =~ ^[Yy]$ ]] && echo "yes" || echo "no")"
   echo ""
   read -n1 -rp "Create project? (y/n) " confirm
   echo ""
@@ -362,9 +339,7 @@ np() {
   mkdir -p "$target"
   echo "Created: ${target#$base/}"
 
-  if [[ "$do_git" =~ ^[Yy]$ ]]; then
-    git -C "$target" init
-  fi
+  git -C "$target" init
 
   cd "$target" || return 1
   echo "→ $(pwd)"
