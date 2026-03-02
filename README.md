@@ -1,62 +1,158 @@
-# dotfiles
+# p
 
-## Setup
+Project directory jumper and scaffolder for bash and zsh.
+
+`p` finds projects by scanning for `.git` directories under a root folder, then lets you jump to them by partial name match. It also includes `sp` for searching projects across categories and `np` for scaffolding new projects with configurable directory structures.
+
+## Quickstart
+
+### 1. Clone
 
 ```bash
-git clone https://github.com/GeorgeQLe/dotfiles ~/dotfiles
+git clone https://github.com/GeorgeQLe/p ~/.p
 ```
 
-**Bash** — add to `~/.bashrc`:
+### 2. Source (add to your shell rc file)
+
+**Bash** (4.0+ required) — add to `~/.bashrc`:
 
 ```bash
-source "$HOME/dotfiles/p.bash"
+source "$HOME/.p/p.bash"
 ```
 
-**Zsh (macOS default)** — add to `~/.zshrc`:
+**Zsh** (macOS default) — add to `~/.zshrc`:
 
 ```zsh
-source "$HOME/dotfiles/p.zsh"
+source "$HOME/.p/p.zsh"
 ```
 
-Both variants are functionally identical; they differ only in shell-specific syntax (completion system, case-folding, `read` builtins, etc.). The zsh variant automatically initializes `compinit` if needed, so no extra setup is required.
+Both variants are functionally identical; they differ only in shell-specific syntax (completion system, case-folding, `read` builtins, etc.).
 
-## What's included
+### 3. (Optional) Set a custom projects directory
 
-### `p.bash` / `p.zsh` — project jumper
+By default all commands scan `~/projects`. To use a different root:
 
-Jump to any project directory under `~/projects` by partial name match.
+```bash
+export P_BASE="$HOME/code"
+```
+
+### 4. (Optional) Customize np categories
+
+```bash
+mkdir -p ~/.config/p
+cp ~/.p/categories.conf.example ~/.config/p/categories.conf
+# edit categories.conf to add/remove categories
+```
+
+## Commands
+
+### `p` — project jumper
+
+Jump to any project directory under `$P_BASE` by partial name match.
 
 ```bash
 p              # list all projects
 p foo          # cd to project matching "foo" (substring, case-insensitive)
-p foo<Tab>     # tab-complete project names (prefix match)
-p --origin     # cd to the directory containing p.bash
+p foo<Tab>     # tab-complete project names
+p --origin     # cd to the directory containing p.bash/p.zsh
+p --help       # show help
+p --version    # show version
 ```
 
-Detects projects by the presence of a `.git` directory. Tab completion uses a 5-minute cache to stay fast.
+Detects projects by `.git` directory presence. Tab completion uses a 5-minute cache.
 
 ### `sp` — project search
 
-Search for a project by name across all `~/projects` category directories. Unlike `p` which matches and immediately jumps, `sp` lists all matches with their category paths and lets you pick one.
+Search for a project by name across all category directories. Unlike `p` which matches and immediately jumps, `sp` lists all matches with their category paths and lets you pick one.
 
 ```bash
 sp foo          # find projects matching "foo", show results with paths
-sp foo<Tab>     # tab-complete project names (prefix match)
+sp foo<Tab>     # tab-complete project names
+sp --help       # show help
 ```
 
 ### `np` — new project scaffolder
 
-Interactive function to create a new project directory in the right location based on category rules.
+Create a new project directory in the right location based on category rules.
 
 ```bash
-np             # prompts for name and category, then git-inits
-np my-project  # skip the name prompt
+np                                     # fully interactive
+np my-project                          # skip the name prompt
+np my-project --category web           # non-interactive (for scripts)
+np my-exp --category sandbox --sandbox-type web  # sandbox with sub-type
+np --help                              # show help
 ```
 
-Categories are organized by type:
+Each category has a type that determines the directory structure:
 
-- **Lifecycle-tracked** (`games/`, `mobile/`, `poke/`, `static-web/`, `tools/`, `web/`) — new projects go in `<category>/dev/<name>`
-- **Flat** (`clones/`, `engines/`, `gcanbuild/`, `libs/`, `scripts/`, `starters/`) — projects go directly in `<category>/<name>`
-- **Sandbox** — prompts for a sub-type (`web`, `games`, `tools`) and places in `sandbox/<type>/<name>`
+| Type | Directory layout | Example |
+|------|-----------------|---------|
+| `lifecycle` | `<category>/dev/<name>` | `web/dev/my-app` |
+| `flat` | `<category>/<name>` | `libs/my-lib` |
+| `sandbox` | `sandbox/<sub-type>/<name>` | `sandbox/web/my-experiment` |
 
-Shows a confirmation summary before creating. Always initializes a git repo. Validates kebab-case naming and checks for existing directories.
+Project names must be kebab-case (lowercase letters, numbers, hyphens, no leading/trailing hyphens).
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `P_BASE` | `~/projects` | Root directory to scan for projects |
+| `P_CONFIG` | `~/.config/p/categories.conf` | Path to category configuration file |
+
+## Configuration
+
+Categories are loaded from `$P_CONFIG`. If no config file exists, built-in defaults are used. See `categories.conf.example` for the format reference.
+
+```bash
+mkdir -p ~/.config/p
+cp ~/.p/categories.conf.example ~/.config/p/categories.conf
+```
+
+The config file uses a simple line-based format:
+
+```
+# name|type|description
+libs|flat|Reusable libraries and SDKs
+web|lifecycle|Web applications
+sandbox|sandbox|Experiments and learning
+
+sandbox_type:web
+sandbox_type:tools
+```
+
+## How it differs from z / zoxide / autojump
+
+Those tools track shell `cd` history using frecency (frequency + recency). `p` takes a different approach:
+
+- **Project-centric** — finds projects by `.git` directory presence, not cd history
+- **Zero warm-up** — works immediately without building a history database
+- **Category scaffolding** — `np` creates new projects in structured directory layouts
+- **Deterministic** — results depend on filesystem state, not usage patterns
+
+If you want smart `cd` for arbitrary directories, use zoxide. If you organize projects under a root directory and want fast jumping + scaffolding, use `p`.
+
+## Development
+
+### Running tests
+
+```bash
+# Install bats-core
+brew install bats-core  # macOS
+# or: apt install bats  # Ubuntu
+
+# Run tests
+bats tests/p.bats                  # test bash variant
+TEST_SHELL=zsh bats tests/p.bats   # test zsh variant
+```
+
+### Shellcheck
+
+```bash
+shellcheck -s bash p.bash
+shellcheck -s bash -e SC2168,SC2296,SC2299,SC2300,SC2312 p.zsh
+```
+
+## License
+
+[MIT](LICENSE)

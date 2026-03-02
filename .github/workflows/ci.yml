@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  shellcheck:
+    name: Shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run shellcheck on p.bash
+        run: shellcheck -s bash p.bash
+      - name: Run shellcheck on p.zsh
+        run: shellcheck -s bash -e SC2168,SC2296,SC2299,SC2300,SC2312 p.zsh
+
+  test-bash:
+    name: Test (bash ${{ matrix.bash }} / ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            bash: "system"
+          - os: ubuntu-22.04
+            bash: "system"
+          - os: macos-latest
+            bash: "homebrew"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install bats
+        run: |
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            brew install bats-core
+          else
+            sudo apt-get update && sudo apt-get install -y bats
+          fi
+
+      - name: Install bash (Homebrew, macOS only)
+        if: matrix.bash == 'homebrew'
+        run: brew install bash
+
+      - name: Set BASH_4_BIN
+        run: |
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            echo "BASH_4_BIN=$(brew --prefix bash)/bin/bash" >> "$GITHUB_ENV"
+          else
+            echo "BASH_4_BIN=$(which bash)" >> "$GITHUB_ENV"
+          fi
+
+      - name: Run bash tests
+        run: bats tests/p.bats
+
+  test-zsh:
+    name: Test (zsh / ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            brew install bats-core
+          else
+            sudo apt-get update && sudo apt-get install -y bats zsh
+          fi
+
+      - name: Run zsh tests
+        env:
+          TEST_SHELL: zsh
+        run: bats tests/p.bats

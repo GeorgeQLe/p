@@ -1,0 +1,27 @@
+# p - project category configuration
+#
+# Each line defines a category: name|type|description
+#
+# Types:
+#   lifecycle  — projects go in <category>/dev/<name>
+#   flat       — projects go in <category>/<name>
+#   sandbox    — prompts for sub-type, goes in sandbox/<type>/<name>
+#
+# Lines starting with "sandbox_type:" define sandbox sub-categories.
+# Lines starting with "#" are comments. Blank lines are ignored.
+#
+# Valid types: flat, lifecycle, sandbox
+# Lines with invalid types or missing fields are skipped with a warning.
+#
+# Copy this file to ~/.config/p/categories.conf and customize:
+#   mkdir -p ~/.config/p
+#   cp ~/.p/categories.conf.example ~/.config/p/categories.conf
+
+libs|flat|Reusable libraries and SDKs
+sandbox|sandbox|Experiments and learning
+scripts|flat|CLI tools and dev utilities
+tools|lifecycle|Desktop and CLI tools
+web|lifecycle|Web applications
+
+sandbox_type:web
+sandbox_type:tools

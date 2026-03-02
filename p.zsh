@@ -1,9 +1,8 @@
-# p - jump to a project directory by partial name match
-# Usage: p [query]
-#   p           - list all projects
-#   p foo       - cd to project matching "foo" (substring, case-insensitive)
-#   p foo<Tab>  - tab-complete project names (prefix match)
-#   p --origin  - cd to the directory containing this script
+# p - project directory jumper and scaffolder for zsh
+# https://github.com/GeorgeQLe/p
+# shellcheck disable=SC2154  # zsh read -r "var?prompt" assigns vars shellcheck can't see
+
+_P_VERSION="1.0.0"
 
 # Ensure zsh completion system is available
 if ! typeset -f compdef > /dev/null 2>&1; then
@@ -15,9 +14,14 @@ _p_origin_dir="${0:A:h}"
 
 # Returns all project directory paths (one per line)
 _p_find_all_dirs() {
-  local base="$HOME/projects"
+  local base="${P_BASE:-$HOME/projects}"
+  if [[ ! -d "$base" ]]; then
+    echo "p: P_BASE directory does not exist: $base" >&2
+    return 1
+  fi
   find "$base" -maxdepth 5 -name '.git' -type d \
     -not -path '*/node_modules/*' \
+    2>/dev/null \
   | sed 's|/\.git$||' | sort -u
 }
 
@@ -30,16 +34,20 @@ _p_classify_dirs() {
     [[ -n "$d" ]] && dirs_arr+=("$d")
   done <<< "$all_dirs"
 
-  local d other
-  for d in "${dirs_arr[@]}"; do
+  # Sort so parents come before children — enables linear scan
+  local sorted=("${(@o)dirs_arr}")
+  local d i j
+  for (( i=1; i<=${#sorted[@]}; i++ )); do
+    d="${sorted[$i]}"
+    # Check if d is a sub-package (child of an earlier entry)
     local is_subpkg=false
-    for other in "${dirs_arr[@]}"; do
-      if [[ "$d" != "$other" && "$d" == "$other/"* ]]; then
+    for (( j=i-1; j>=1; j-- )); do
+      if [[ "$d" == "${sorted[$j]}/"* ]]; then
         is_subpkg=true
         break
       fi
     done
-    if $is_subpkg; then
+    if [[ "$is_subpkg" == true ]]; then
       echo "P $d"
     else
       echo "S $d"
@@ -47,18 +55,64 @@ _p_classify_dirs() {
   done
 }
 
+_p_show_help() {
+  cat <<'EOF'
+p - project directory jumper and scaffolder
+
+Usage:
+  p [query]        Jump to a project matching query (substring, case-insensitive)
+  p                List all projects
+  p --origin       cd to the directory containing this script
+  p --help         Show this help message
+  p --version      Show version
+
+  sp <query>       Search for projects and show results with paths
+  sp --help        Show sp help
+
+  np [name]        Create a new project (interactive scaffolder)
+  np --help        Show np help
+  np name --category CAT [--sandbox-type TYPE]
+                   Create a project non-interactively
+
+Environment Variables:
+  P_BASE           Projects root directory (default: ~/projects)
+  P_CONFIG         Path to categories.conf (default: ~/.config/p/categories.conf)
+
+See https://github.com/GeorgeQLe/p for full documentation.
+EOF
+}
+
 p() {
+  if [[ "$1" == "--help" || "$1" == "-h" ]]; then
+    _p_show_help
+    return 0
+  fi
+  if [[ "$1" == "--version" || "$1" == "-V" ]]; then
+    echo "p $_P_VERSION"
+    return 0
+  fi
   if [[ "$1" == "--origin" ]]; then
     cd "$_p_origin_dir" || return 1
     echo "→ $(pwd)"
     return 0
   fi
 
-  local base="$HOME/projects"
-  local query="$1"
+  # Treat -- as end-of-flags
+  local query
+  if [[ "$1" == "--" ]]; then
+    query="$2"
+  elif [[ -n "$1" && "$1" == -* && "$1" != "--" ]]; then
+    echo "p: unknown option: $1" >&2
+    echo "Usage: p [--help | --version | --origin | query]" >&2
+    return 1
+  else
+    query="$1"
+  fi
+
+  local base="${P_BASE:-$HOME/projects}"
 
   local all_dirs
-  all_dirs=$(_p_find_all_dirs)
+  all_dirs=$(_p_find_all_dirs) || return 1
 
   local classified
   classified=$(_p_classify_dirs "$all_dirs")
@@ -98,11 +152,11 @@ p() {
       # Phase 2: relative path fallback
       local sa_path=() sp_path=()
       for d in "${standalone[@]}"; do
-        local rel="${d#$base/}"
+        local rel="${d#"$base"/}"
         [[ "${(L)rel}" == *"$q"* ]] && sa_path+=("$d")
       done
       for d in "${subpkg[@]}"; do
-        local rel="${d#$base/}"
+        local rel="${d#"$base"/}"
         [[ "${(L)rel}" == *"$q"* ]] && sp_path+=("$d")
       done
       matches=("${sa_path[@]}" "${sp_path[@]}")
@@ -115,7 +169,7 @@ p() {
   local count=${#matches[@]}
 
   if [[ "$count" -eq 0 ]]; then
-    echo "No projects matching '$query'"
+    echo "No projects matching '$query'" >&2
     return 1
   elif [[ "$count" -eq 1 ]]; then
     cd "${matches[1]}" || return 1
@@ -124,7 +178,7 @@ p() {
     echo "Multiple matches:"
     local i=1
     for d in "${matches[@]}"; do
-      local rel="${d#$base/}"
+      local rel="${d#"$base"/}"
       printf "  %d) %s\n" "$i" "$rel"
       ((i++))
     done
@@ -141,14 +195,15 @@ p() {
 }
 
 _p_completion() {
-  local cache_file="/tmp/_p_completion_cache_$(id -u)"
-  local cache_ttl=300
+  local cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/p"
+  [[ -d "$cache_dir" ]] || mkdir -p "$cache_dir"
+  local cache_file="$cache_dir/p_completion"
 
   # Rebuild cache if missing or stale (>5 min)
   if [[ ! -f "$cache_file" ]] || \
-     [[ $(( $(date +%s) - $(stat -f %m "$cache_file") )) -gt $cache_ttl ]]; then
+     [[ -n "$(find "$cache_file" -mmin +5 2>/dev/null)" ]]; then
     local all_dirs classified
-    all_dirs=$(_p_find_all_dirs)
+    all_dirs=$(_p_find_all_dirs) || return 1
     classified=$(_p_classify_dirs "$all_dirs")
 
     # Standalone basenames sorted, then sub-package basenames sorted, deduped
@@ -158,21 +213,52 @@ _p_completion() {
     } | awk '!seen[$0]++' > "$cache_file"
   fi
 
+  # shellcheck disable=SC2086  # zsh (f) flag handles splitting correctly
   compadd - ${(f)"$(cat "$cache_file")"}
 }
 compdef _p_completion p
 
-# sp - search if a project exists within ~/projects top-level categories
+# sp - search if a project exists within top-level categories
 # Usage: sp <query>
 #   sp foo      - search for directories matching "foo" within category folders
 #   sp foo<Tab> - tab-complete project names (prefix match)
 sp() {
-  local base="$HOME/projects"
-  local query="$1"
+  if [[ "$1" == "--help" || "$1" == "-h" ]]; then
+    cat <<'EOF'
+sp - search for projects by name
+
+Usage:
+  sp <query>       Search for projects matching query within category directories
+  sp <query><Tab>  Tab-complete project names
+  sp --help        Show this help message
+
+Searches within all top-level category directories under P_BASE.
+EOF
+    return 0
+  fi
+
+  local base="${P_BASE:-$HOME/projects}"
+
+  # Treat -- as end-of-flags
+  local query
+  if [[ "$1" == "--" ]]; then
+    query="$2"
+  elif [[ -n "$1" && "$1" == -* ]]; then
+    echo "sp: unknown option: $1" >&2
+    echo "Usage: sp [--help | query]" >&2
+    return 1
+  else
+    query="$1"
+  fi
 
   if [[ -z "$query" ]]; then
-    echo "Usage: sp <query>"
-    echo "Search for projects within ~/projects category directories."
+    echo "Usage: sp <query>" >&2
+    echo "Search for projects within $base category directories." >&2
+    return 1
+  fi
+
+  if [[ ! -d "$base" ]]; then
+    echo "sp: P_BASE directory does not exist: $base" >&2
     return 1
   fi
 
@@ -196,22 +282,17 @@ sp() {
       2>/dev/null | sed 's|/\.git$||')
   done
 
-  # Deduplicate and sort
+  # Deduplicate via sort -u
   local unique=()
-  local seen=()
-  for m in "${matches[@]}"; do
-    local already=false
-    for s in "${seen[@]}"; do
-      [[ "$m" == "$s" ]] && already=true && break
-    done
-    $already || { unique+=("$m"); seen+=("$m"); }
-  done
+  while IFS= read -r line; do
+    [[ -n "$line" ]] && unique+=("$line")
+  done < <(printf '%s\n' "${matches[@]}" | sort -u)
   matches=("${unique[@]}")
 
   local count=${#matches[@]}
 
   if [[ "$count" -eq 0 ]]; then
-    echo "No projects matching '$query' found."
+    echo "No projects matching '$query' found." >&2
     return 1
   fi
 
@@ -219,7 +300,7 @@ sp() {
   echo ""
   local i=1
   for d in "${matches[@]}"; do
-    local rel="${d#$base/}"
+    local rel="${d#"$base"/}"
     local name="${d##*/}"
     printf "  %d) %s\n" "$i" "$name"
     printf "     %s\n" "$rel"
@@ -236,123 +317,284 @@ sp() {
 }
 
 _sp_completion() {
-  local cache_file="/tmp/_sp_completion_cache_$(id -u)"
-  local cache_ttl=300
+  local cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/p"
+  [[ -d "$cache_dir" ]] || mkdir -p "$cache_dir"
+  local cache_file="$cache_dir/sp_completion"
 
   if [[ ! -f "$cache_file" ]] || \
-     [[ $(( $(date +%s) - $(stat -f %m "$cache_file") )) -gt $cache_ttl ]]; then
-    find "$HOME/projects" -mindepth 2 -maxdepth 5 -name '.git' -type d \
+     [[ -n "$(find "$cache_file" -mmin +5 2>/dev/null)" ]]; then
+    find "${P_BASE:-$HOME/projects}" -mindepth 2 -maxdepth 5 -name '.git' -type d \
       -not -path '*/node_modules/*' \
       2>/dev/null | sed 's|/\.git$||' | sed 's|.*/||' | sort -u > "$cache_file"
   fi
 
+  # shellcheck disable=SC2086  # zsh (f) flag handles splitting correctly
   compadd - ${(f)"$(cat "$cache_file")"}
 }
 compdef _sp_completion sp
 
+_p_load_categories() {
+  local -ga _p_categories
+  local -ga _p_sandbox_types
+  _p_categories=()
+  _p_sandbox_types=()
+
+  local config="${P_CONFIG:-$HOME/.config/p/categories.conf}"
+  if [[ -f "$config" ]]; then
+    local lineno=0
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      ((lineno++))
+      [[ -z "$line" || "$line" == \#* ]] && continue
+      if [[ "$line" == sandbox_type:* ]]; then
+        local st_val="${line#sandbox_type:}"
+        if [[ -z "$st_val" ]]; then
+          echo "np: warning: empty sandbox_type at $config:$lineno" >&2
+          continue
+        fi
+        _p_sandbox_types+=("$st_val")
+      else
+        # Validate format: name|type|description
+        if [[ ! "$line" == *"|"*"|"* ]]; then
+          echo "np: warning: malformed category line at $config:$lineno: $line" >&2
+          continue
+        fi
+        local cat_type="${line#*|}"
+        cat_type="${cat_type%%|*}"
+        if [[ "$cat_type" != "flat" && "$cat_type" != "lifecycle" && "$cat_type" != "sandbox" ]]; then
+          echo "np: warning: unknown category type '$cat_type' at $config:$lineno" >&2
+          continue
+        fi
+        _p_categories+=("$line")
+      fi
+    done < "$config"
+  fi
+
+  if (( ${#_p_categories[@]} == 0 )); then
+    _p_categories=(
+      "libs|flat|Reusable libraries and SDKs"
+      "sandbox|sandbox|Experiments and learning"
+      "scripts|flat|CLI tools and dev utilities"
+      "tools|lifecycle|Desktop and CLI tools"
+      "web|lifecycle|Web applications"
+    )
+  fi
+  if (( ${#_p_sandbox_types[@]} == 0 )); then
+    _p_sandbox_types=("web" "tools")
+  fi
+}
+
 np() {
-  local base="$HOME/projects"
+  if [[ "$1" == "--help" || "$1" == "-h" ]]; then
+    cat <<'EOF'
+np - create a new project
 
-  # Categories: name|type|description (lifecycle, flat, sandbox)
-  local categories=(
-    "clones|flat|Followed tutorials and cloned repos"
-    "engines|flat|Game and app engines"
-    "games|lifecycle|Video game projects"
-    "gcanbuild|flat|YouTube channel content"
-    "libs|flat|Reusable libraries and SDKs"
-    "mobile|lifecycle|Mobile apps"
-    "poke|lifecycle|Poke-branded apps"
-    "sandbox|sandbox|Experiments and learning"
-    "scripts|flat|CLI tools and dev utilities"
-    "starters|flat|Reusable project templates"
-    "static-web|lifecycle|Static websites and landing pages"
-    "tools|lifecycle|Desktop and CLI tools"
-    "web|lifecycle|Web applications"
-  )
+Usage:
+  np [name]        Interactive project scaffolder
+  np --help        Show this help message
+  np name --category CAT [--sandbox-type TYPE]
+                   Non-interactive mode
 
-  local sandbox_types=("web" "games" "tools")
+Options:
+  --category CAT       Category name (required for non-interactive mode)
+  --sandbox-type TYPE  Sandbox sub-type (required if category type is sandbox)
 
-  # 1. Get project name (accept as argument or prompt)
-  local name="${1:-}"
+Creates the project directory, initializes a git repo, and cd's into it.
+Project names must be kebab-case: lowercase letters, numbers, and hyphens.
+EOF
+    return 0
+  fi
+
+  local base="${P_BASE:-$HOME/projects}"
+
+  if [[ ! -d "$base" ]]; then
+    echo "np: P_BASE directory does not exist: $base" >&2
+    return 1
+  fi
+
+  _p_load_categories
+  local categories=("${_p_categories[@]}")
+  local sandbox_types=("${_p_sandbox_types[@]}")
+
+  # Parse arguments
+  local name="" opt_category="" opt_sandbox_type=""
+  local positional_set=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --)
+        shift
+        if [[ -n "$1" ]] && [[ "$positional_set" == false ]]; then
+          name="$1"
+          positional_set=true
+          shift
+        fi
+        ;;
+      --category)
+        opt_category="$2"
+        shift 2
+        ;;
+      --sandbox-type)
+        opt_sandbox_type="$2"
+        shift 2
+        ;;
+      -*)
+        echo "np: unknown option: $1" >&2
+        echo "Usage: np [name] [--category CAT] [--sandbox-type TYPE]" >&2
+        return 1
+        ;;
+      *)
+        if [[ "$positional_set" == false ]]; then
+          name="$1"
+          positional_set=true
+        fi
+        shift
+        ;;
+    esac
+  done
+
+  # 1. Get project name (prompt if not given)
   if [[ -z "$name" ]]; then
     read -r "name?Project name (kebab-case): "
   fi
-  if [[ -z "$name" ]] || [[ ! "$name" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
-    echo "Invalid name. Use lowercase letters, numbers, and hyphens."
+  # Validate: kebab-case, no trailing hyphen
+  if [[ -z "$name" ]] || [[ ! "$name" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]]; then
+    echo "Invalid name. Use lowercase letters, numbers, and hyphens (no leading/trailing hyphens)." >&2
     return 1
   fi
 
-  # 2. Pick category
-  echo ""
-  echo "Categories:"
-  local i=1
-  for entry in "${categories[@]}"; do
-    local cat_name="${entry%%|*}"
-    local cat_desc="${entry##*|}"
-    printf "  %2d) %-12s %s\n" "$i" "$cat_name" "$cat_desc"
-    ((i++))
-  done
-  echo ""
-  read -r "choice?Pick [1-${#categories[@]}]: "
-  if [[ ! "$choice" =~ ^[0-9]+$ ]] || (( choice < 1 || choice > ${#categories[@]} )); then
-    echo "Cancelled."
-    return 1
-  fi
+  local selected cat_name cat_type remainder target
 
-  local selected="${categories[$choice]}"
-  local cat_name="${selected%%|*}"
-  local remainder="${selected#*|}"
-  local cat_type="${remainder%%|*}"
-
-  # 3. Build target path
-  local target
-  case "$cat_type" in
-    lifecycle)
-      target="$base/$cat_name/dev/$name"
-      ;;
-    sandbox)
-      echo ""
-      echo "Sandbox type:"
-      local j=1
-      for st in "${sandbox_types[@]}"; do
-        printf "  %d) %s\n" "$j" "$st"
-        ((j++))
-      done
-      echo ""
-      read -r "st_choice?Pick [1-${#sandbox_types[@]}]: "
-      if [[ ! "$st_choice" =~ ^[0-9]+$ ]] || (( st_choice < 1 || st_choice > ${#sandbox_types[@]} )); then
-        echo "Cancelled."
-        return 1
+  if [[ -n "$opt_category" ]]; then
+    # Non-interactive mode: find category by name
+    local found=false
+    for entry in "${categories[@]}"; do
+      local entry_name="${entry%%|*}"
+      if [[ "$entry_name" == "$opt_category" ]]; then
+        selected="$entry"
+        found=true
+        break
       fi
-      target="$base/sandbox/${sandbox_types[$st_choice]}/$name"
-      ;;
-    flat)
-      target="$base/$cat_name/$name"
-      ;;
-  esac
+    done
+    if [[ "$found" == false ]]; then
+      echo "np: unknown category: $opt_category" >&2
+      echo "Available categories: $(printf '%s' "${categories[@]}" | sed 's/|[^|]*|[^|]*/ /g' | tr '\n' ' ')" >&2
+      return 1
+    fi
+
+    cat_name="${selected%%|*}"
+    remainder="${selected#*|}"
+    cat_type="${remainder%%|*}"
+
+    case "$cat_type" in
+      lifecycle)
+        target="$base/$cat_name/dev/$name"
+        ;;
+      sandbox)
+        if [[ -z "$opt_sandbox_type" ]]; then
+          echo "np: --sandbox-type required for sandbox category" >&2
+          return 1
+        fi
+        # Validate sandbox type
+        local valid_st=false
+        for st in "${sandbox_types[@]}"; do
+          [[ "$st" == "$opt_sandbox_type" ]] && valid_st=true && break
+        done
+        if [[ "$valid_st" == false ]]; then
+          echo "np: unknown sandbox type: $opt_sandbox_type" >&2
+          return 1
+        fi
+        target="$base/sandbox/$opt_sandbox_type/$name"
+        ;;
+      flat)
+        target="$base/$cat_name/$name"
+        ;;
+      *)
+        echo "np: unknown category type '$cat_type' in config" >&2
+        return 1
+        ;;
+    esac
+  else
+    # Interactive mode
+    # 2. Pick category
+    echo ""
+    echo "Categories:"
+    local i=1
+    for entry in "${categories[@]}"; do
+      local entry_name="${entry%%|*}"
+      local cat_desc="${entry##*|}"
+      printf "  %2d) %-12s %s\n" "$i" "$entry_name" "$cat_desc"
+      ((i++))
+    done
+    echo ""
+    read -r "choice?Pick [1-${#categories[@]}]: "
+    if [[ ! "$choice" =~ ^[0-9]+$ ]] || (( choice < 1 || choice > ${#categories[@]} )); then
+      echo "Cancelled."
+      return 1
+    fi
+
+    selected="${categories[$choice]}"
+    cat_name="${selected%%|*}"
+    remainder="${selected#*|}"
+    cat_type="${remainder%%|*}"
+
+    # 3. Build target path
+    case "$cat_type" in
+      lifecycle)
+        target="$base/$cat_name/dev/$name"
+        ;;
+      sandbox)
+        echo ""
+        echo "Sandbox type:"
+        local j=1
+        for st in "${sandbox_types[@]}"; do
+          printf "  %d) %s\n" "$j" "$st"
+          ((j++))
+        done
+        echo ""
+        read -r "st_choice?Pick [1-${#sandbox_types[@]}]: "
+        if [[ ! "$st_choice" =~ ^[0-9]+$ ]] || (( st_choice < 1 || st_choice > ${#sandbox_types[@]} )); then
+          echo "Cancelled."
+          return 1
+        fi
+        target="$base/sandbox/${sandbox_types[$st_choice]}/$name"
+        ;;
+      flat)
+        target="$base/$cat_name/$name"
+        ;;
+      *)
+        echo "np: unknown category type '$cat_type' in config" >&2
+        return 1
+        ;;
+    esac
+  fi
 
   # 4. Check if already exists
   if [[ -d "$target" ]]; then
-    echo "Directory already exists: $target"
+    echo "Directory already exists: $target" >&2
     return 1
   fi
 
-  # 5. Confirm and create
-  echo ""
-  echo "  Name:  $name"
-  echo "  Path:  ${target#$base/}"
-  echo ""
-  read -r -k1 "confirm?Create project? (y/n) "
-  echo ""
-  if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
-    echo "Cancelled."
-    return 1
+  # 5. Confirm (interactive) or create (non-interactive)
+  if [[ -z "$opt_category" ]]; then
+    echo ""
+    echo "  Name:  $name"
+    echo "  Path:  ${target#"$base"/}"
+    echo ""
+    read -r -k1 "confirm?Create project? (y/n) "
+    echo ""
+    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+      echo "Cancelled."
+      return 1
+    fi
   fi
 
   mkdir -p "$target"
-  echo "Created: ${target#$base/}"
+  echo "Created: ${target#"$base"/}"
 
-  git -C "$target" init
+  if command -v git >/dev/null 2>&1; then
+    git -C "$target" init
+  else
+    echo "np: warning: git not found, skipping git init" >&2
+  fi
 
   cd "$target" || return 1
   echo "→ $(pwd)"
