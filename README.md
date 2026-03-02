@@ -18,7 +18,7 @@ source "$HOME/dotfiles/p.bash"
 source "$HOME/dotfiles/p.zsh"
 ```
 
-Both variants are functionally identical; they differ only in shell-specific syntax (completion system, case-folding, `read` builtins, etc.).
+Both variants are functionally identical; they differ only in shell-specific syntax (completion system, case-folding, `read` builtins, etc.). The zsh variant automatically initializes `compinit` if needed, so no extra setup is required.
 
 ## What's included
 

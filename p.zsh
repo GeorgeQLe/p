@@ -5,6 +5,11 @@
 #   p foo<Tab>  - tab-complete project names (prefix match)
 #   p --origin  - cd to the directory containing this script
 
+# Ensure zsh completion system is available
+if ! typeset -f compdef > /dev/null 2>&1; then
+  autoload -Uz compinit && compinit
+fi
+
 # Directory where this script lives (captured at source time)
 _p_origin_dir="${0:A:h}"
 
