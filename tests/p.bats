@@ -490,6 +490,12 @@ CONF
   if [[ "$SHELL_VARIANT" == "zsh" ]]; then
     skip "bash-only test"
   fi
+  # /bin/bash must be bash 3.x for this test to be meaningful
+  local bin_bash_ver
+  bin_bash_ver=$(/bin/bash -c 'echo "${BASH_VERSINFO[0]}"')
+  if (( bin_bash_ver >= 4 )); then
+    skip "/bin/bash is bash ${bin_bash_ver}.x (need 3.x to test version guard)"
+  fi
   # return in a sourced context exits 0, but prints warning and skips definitions
   run /bin/bash -c "source '$SOURCE_FILE' 2>&1; echo FUNC_DEFINED=\$(type -t p 2>/dev/null || echo none)"
   [[ "$output" == *"bash 4.0+ required"* ]]
