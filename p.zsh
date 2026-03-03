@@ -632,8 +632,8 @@ _rp_completion() {
 compdef _rp_completion rp
 
 _p_load_categories() {
-  local -ga _p_categories
-  local -ga _p_sandbox_types
+  typeset -ga _p_categories
+  typeset -ga _p_sandbox_types
   _p_categories=()
   _p_sandbox_types=()
   _p_dev_tool=""
