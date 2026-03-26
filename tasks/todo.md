@@ -14,7 +14,7 @@
 ---
 
 ### Tests First
-- Step 2.1: Write failing tests for completion functions
+- [x] Step 2.1: Write failing tests for completion functions
   - File: modify `tests/p.bats`
   - Tests to add:
     - `_p_completion populates candidates from cache` — set up cache file with known project names, simulate COMP_WORDS/COMP_CWORD (bash) or CURRENT/words (zsh), call the completion function, assert candidates contain expected names

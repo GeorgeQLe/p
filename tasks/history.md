@@ -16,3 +16,9 @@
 - Fixed `> "$history_file"` to `true > "$history_file"` for portability in --prune handler
 - All 120 tests pass (bash + zsh), shellcheck clean
 - Phase 1 complete: all acceptance criteria met
+
+## 2026-03-26 — Phase 2, Step 2.1: Write failing tests for completion functions
+- Added 8 bash-only completion tests to `tests/p.bats` with `_run_completion` helper
+- Tests cover: _p_completion (cache, skip-after-first-arg, spaces), _sp_completion (cache, skip), _rp_completion (history, skip, missing-history)
+- 7 of 8 pass; test 123 (spaces in names) fails as expected (red phase for Step 2.2)
+- All zsh tests skip correctly; no regressions
