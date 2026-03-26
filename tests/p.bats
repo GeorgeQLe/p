@@ -1297,3 +1297,101 @@ CONF
   [ "$status" -eq 0 ]
   [[ "$output" == *"rp"* ]]
 }
+
+# ============================================================
+# Completion functions (bash-only — zsh uses compadd)
+# ============================================================
+
+# Helper: run a completion function in a bash subprocess and print COMPREPLY
+_run_completion() {
+  local func="$1" cmd="$2" cur="$3" cword="${4:-1}"
+  local bash_bin="${BASH_4_BIN:-/opt/homebrew/bin/bash}"
+  "$bash_bin" -c "
+    complete() { :; }
+    export P_BASE='$P_BASE' P_CONFIG='$P_CONFIG' HOME='$HOME'
+    source '$SOURCE_FILE'
+    COMP_WORDS=($cmd $cur); COMP_CWORD=$cword; COMPREPLY=()
+    $func
+    printf '%s\n' \"\${COMPREPLY[@]}\"
+  "
+}
+
+@test "_p_completion populates candidates from cache" {
+  [[ "${TEST_SHELL:-bash}" == "bash" ]] || skip "bash-specific completion"
+  local cache_dir="$HOME/.cache/p"
+  mkdir -p "$cache_dir"
+  printf '%s\n' "alpha" "beta" "gamma" > "$cache_dir/p_completion"
+  run _run_completion _p_completion p al
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"alpha"* ]]
+  [[ "$output" != *"beta"* ]]
+}
+
+@test "_p_completion skips completion after first argument" {
+  [[ "${TEST_SHELL:-bash}" == "bash" ]] || skip "bash-specific completion"
+  local cache_dir="$HOME/.cache/p"
+  mkdir -p "$cache_dir"
+  printf '%s\n' "alpha" > "$cache_dir/p_completion"
+  run _run_completion _p_completion "p alpha" "" 2
+  [ "$status" -eq 0 ]
+  [[ -z "$output" ]]
+}
+
+@test "_p_completion handles project names with spaces" {
+  [[ "${TEST_SHELL:-bash}" == "bash" ]] || skip "bash-specific completion"
+  local cache_dir="$HOME/.cache/p"
+  mkdir -p "$cache_dir"
+  printf '%s\n' "my project" "other" > "$cache_dir/p_completion"
+  run _run_completion _p_completion p my
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"my project"* ]]
+}
+
+@test "_sp_completion populates candidates from cache" {
+  [[ "${TEST_SHELL:-bash}" == "bash" ]] || skip "bash-specific completion"
+  local cache_dir="$HOME/.cache/p"
+  mkdir -p "$cache_dir"
+  printf '%s\n' "subrepo-a" "subrepo-b" > "$cache_dir/sp_completion"
+  run _run_completion _sp_completion sp sub
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"subrepo-a"* ]]
+}
+
+@test "_sp_completion skips completion after first argument" {
+  [[ "${TEST_SHELL:-bash}" == "bash" ]] || skip "bash-specific completion"
+  local cache_dir="$HOME/.cache/p"
+  mkdir -p "$cache_dir"
+  printf '%s\n' "subrepo-a" > "$cache_dir/sp_completion"
+  run _run_completion _sp_completion "sp subrepo-a" "" 2
+  [ "$status" -eq 0 ]
+  [[ -z "$output" ]]
+}
+
+@test "_rp_completion populates candidates from history" {
+  [[ "${TEST_SHELL:-bash}" == "bash" ]] || skip "bash-specific completion"
+  local cache_dir="$HOME/.cache/p"
+  mkdir -p "$cache_dir"
+  printf '%s\n' "/home/user/projects/foo" "/home/user/projects/bar" > "$cache_dir/p_history"
+  run _run_completion _rp_completion rp f
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"foo"* ]]
+  [[ "$output" != *"bar"* ]]
+}
+
+@test "_rp_completion skips completion after first argument" {
+  [[ "${TEST_SHELL:-bash}" == "bash" ]] || skip "bash-specific completion"
+  local cache_dir="$HOME/.cache/p"
+  mkdir -p "$cache_dir"
+  printf '%s\n' "/home/user/projects/foo" > "$cache_dir/p_history"
+  run _run_completion _rp_completion "rp foo" "" 2
+  [ "$status" -eq 0 ]
+  [[ -z "$output" ]]
+}
+
+@test "_rp_completion with missing history returns cleanly" {
+  [[ "${TEST_SHELL:-bash}" == "bash" ]] || skip "bash-specific completion"
+  rm -f "$HOME/.cache/p/p_history"
+  run _run_completion _rp_completion rp ""
+  [ "$status" -eq 0 ]
+  [[ -z "$output" ]]
+}
