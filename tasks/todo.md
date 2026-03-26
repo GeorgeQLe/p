@@ -13,7 +13,7 @@
 ---
 
 ### Tests First
-- Step 3.1: Write failing tests for all three items
+- [x] Step 3.1: Write failing tests for all three items
 
 ### Implementation
 - Step 3.2: Add last-category guard to `_pconfig_remove`

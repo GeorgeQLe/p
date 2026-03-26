@@ -28,3 +28,8 @@
 - Zsh versions already handle spaces via `compadd` — no changes needed
 - All 128 tests pass (bash + zsh), shellcheck clean
 - Phase 2 complete: all acceptance criteria met
+
+## 2026-03-26 — Phase 3, Step 3.1: Write failing tests
+- Added 3 tests: last-category guard, empty cache doctor, populated cache doctor
+- 2 fail as expected (red phase for Steps 3.2 and 3.4), 1 passes (populated cache)
+- 134 total tests, same 2 expected failures in both bash and zsh
