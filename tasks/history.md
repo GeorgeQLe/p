@@ -22,3 +22,9 @@
 - Tests cover: _p_completion (cache, skip-after-first-arg, spaces), _sp_completion (cache, skip), _rp_completion (history, skip, missing-history)
 - 7 of 8 pass; test 123 (spaces in names) fails as expected (red phase for Step 2.2)
 - All zsh tests skip correctly; no regressions
+
+## 2026-03-26 — Phase 2, Steps 2.2-2.3: Space-safe bash completion
+- Replaced `compgen -W` with line-by-line prefix matching in `_p_completion`, `_sp_completion`, `_rp_completion` (p.bash only)
+- Zsh versions already handle spaces via `compadd` — no changes needed
+- All 128 tests pass (bash + zsh), shellcheck clean
+- Phase 2 complete: all acceptance criteria met

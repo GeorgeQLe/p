@@ -35,7 +35,7 @@
   - For zsh tests (`TEST_SHELL=zsh`), the test runs `zsh -c "source p.zsh; ..."` — we can define a mock `compadd` function before calling the completion function
 
 ### Implementation
-- Step 2.2: Fix bash `_p_completion` to handle spaces in project names
+- [x] Step 2.2: Fix bash `_p_completion` to handle spaces in project names
   - File: `p.bash` lines 412-413
   - Current (broken with spaces): `mapfile -t COMPREPLY < <(compgen -W "$(cat "$cache_file")" -- "$cur")`
   - Fix: Read cache file line-by-line, filter by prefix manually:
@@ -49,7 +49,7 @@
   - Apply same fix to `_sp_completion` (p.bash line 531) and `_rp_completion` (p.bash line 688)
   - Zsh versions use `compadd` which already handles spaces correctly — no fix needed
 
-- Step 2.3: Run tests and verify all pass
+- [x] Step 2.3: Run tests and verify all pass
   - `bats tests/p.bats` (bash)
   - `TEST_SHELL=zsh bats tests/p.bats` (zsh)
   - `shellcheck -s bash p.bash`
@@ -57,13 +57,13 @@
 
 ### Milestone: Completion Hardening Complete
 **Acceptance Criteria:**
-- [ ] Bash completion correctly completes a project name containing a space
-- [ ] All completion functions return 0 (not bare `return` or `return 1`) on early-exit paths
-- [ ] At least one test per completion function verifying it populates candidates from cache/history
-- [ ] At least one test verifying completion only fires on the first argument (no suggestions after arg 1)
-- [ ] Tests pass for both `TEST_SHELL=bash` and `TEST_SHELL=zsh`
-- [ ] Both p.bash and p.zsh updated in lockstep
-- [ ] No regressions in previous tests
+- [x] Bash completion correctly completes a project name containing a space
+- [x] All completion functions return 0 (not bare `return` or `return 1`) on early-exit paths
+- [x] At least one test per completion function verifying it populates candidates from cache/history
+- [x] At least one test verifying completion only fires on the first argument (no suggestions after arg 1)
+- [x] Tests pass for both `TEST_SHELL=bash` and `TEST_SHELL=zsh`
+- [x] Both p.bash and p.zsh updated in lockstep (zsh already correct, bash-only fix needed)
+- [x] No regressions in previous tests
 
 ---
 
