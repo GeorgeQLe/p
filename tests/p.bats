@@ -657,6 +657,42 @@ CONF
   [[ "$output" != *"[flat]"*"Reusable libraries"* ]]
 }
 
+@test "pconfig remove refuses to remove last category" {
+  run _p pconfig init
+  [ "$status" -eq 0 ]
+  # Init creates 3 categories (libs, sandbox, tools). Remove 2.
+  run _p pconfig remove <<< "1"
+  [ "$status" -eq 0 ]
+  run _p pconfig remove <<< "1"
+  [ "$status" -eq 0 ]
+  # Now only 1 remains — should refuse
+  run _p pconfig remove <<< "1"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Cannot remove last category"* ]]
+}
+
+# ============================================================
+# p --doctor — cache reporting
+# ============================================================
+
+@test "p --doctor reports empty cache as empty" {
+  local cache_dir="$HOME/.cache/p"
+  mkdir -p "$cache_dir"
+  true > "$cache_dir/p_completion"
+  run _p p --doctor
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"p_completion"*"empty"* ]]
+}
+
+@test "p --doctor reports populated cache as valid" {
+  local cache_dir="$HOME/.cache/p"
+  mkdir -p "$cache_dir"
+  echo "foo" > "$cache_dir/p_completion"
+  run _p p --doctor
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"p_completion"*"valid"* ]]
+}
+
 # ============================================================
 # pconfig add-sandbox-type / remove-sandbox-type
 # ============================================================
