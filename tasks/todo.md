@@ -24,7 +24,7 @@
   - Test: `rp --help mentions --prune` — assert help text contains "--prune"
 
 ### Implementation
-- Step 1.2: Add `--prune` flag handling to `rp` in both shells
+- [x] Step 1.2: Add `--prune` flag handling to `rp` in both shells
   - Files: modify `p.bash` (rp function, ~line 551), modify `p.zsh` (rp function, ~line 550)
   - Add `--prune` block after `--clear` block
   - Read history, filter to entries where `[[ ! -d "$entry" ]]`, write back, report count

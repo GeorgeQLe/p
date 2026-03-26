@@ -543,6 +543,7 @@ Usage:
   rp [query]       Jump to a recently-visited project (substring match)
   rp               List recent projects (most recent first)
   rp --clear       Clear project history
+  rp --prune       Remove stale entries (deleted directories)
   rp --help        Show this help message
 EOF
     return 0
@@ -554,13 +555,40 @@ EOF
     return 0
   fi
 
+  if [[ "$1" == "--prune" ]]; then
+    if [[ ! -f "$history_file" ]] || [[ ! -s "$history_file" ]]; then
+      echo "No stale entries found."
+      return 0
+    fi
+    local keep=() removed=0
+    while IFS= read -r line; do
+      [[ -n "$line" ]] || continue
+      if [[ -d "$line" ]]; then
+        keep+=("$line")
+      else
+        ((removed++))
+      fi
+    done < "$history_file"
+    if (( removed == 0 )); then
+      echo "No stale entries found."
+    else
+      if (( ${#keep[@]} > 0 )); then
+        printf '%s\n' "${keep[@]}" > "$history_file"
+      else
+        > "$history_file"
+      fi
+      echo "Removed $removed stale entries."
+    fi
+    return 0
+  fi
+
   # Treat -- as end-of-flags
   local query
   if [[ "$1" == "--" ]]; then
     query="$2"
   elif [[ -n "$1" && "$1" == -* ]]; then
     echo "rp: unknown option: $1" >&2
-    echo "Usage: rp [--help | --clear | query]" >&2
+    echo "Usage: rp [--help | --clear | --prune | query]" >&2
     return 1
   else
     query="$1"
