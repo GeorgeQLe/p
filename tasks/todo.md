@@ -70,7 +70,7 @@
   **Tests that should pass after this step:** tests 117, 118, 119 (--prune tests and --help --prune).
   **Tests still expected to fail:** tests 115, 116 (stale filtering in main read path — that's Step 1.3).
 
-- Step 1.3: Add stale-entry filtering to the main `rp` read path in both shells
+- [x] Step 1.3: Add stale-entry filtering to the main `rp` read path in both shells
   - Files: modify `p.bash` (rp function, ~line 574-578), modify `p.zsh` (rp function, ~line 573-577)
   - After reading `all_entries` from history, filter out entries where directory doesn't exist
   - For each removed entry, print `"rp: removed stale project: <basename> (<path>)"` to stderr
@@ -127,20 +127,20 @@
   - No regressions in existing `rp` tests
 
 ### Green
-- Step 1.4: Run tests and verify all pass
+- [x] Step 1.4: Run tests and verify all pass
   - `bats tests/p.bats` (bash)
   - `TEST_SHELL=zsh bats tests/p.bats` (zsh)
   - `shellcheck -s bash p.bash`
   - `shellcheck -s bash -e SC2168,SC2296,SC2299,SC2300,SC2312 p.zsh`
-- Step 1.5: Verify no regressions in existing `rp` tests
+- [x] Step 1.5: Verify no regressions in existing `rp` tests
 
 ### Milestone: History Robustness Complete
 **Acceptance Criteria:**
-- [ ] `rp` with a history entry pointing to a deleted directory shows a clear message and removes the entry
-- [ ] `rp` with a mix of valid and stale entries only shows valid ones in the picker
-- [ ] `rp --prune` removes all entries pointing to nonexistent directories and reports count
-- [ ] `rp --prune` with no stale entries reports "No stale entries found"
-- [ ] Tests cover: stale single entry, stale entry in multi-list, `--prune` with stale entries, `--prune` with no stale entries
-- [ ] Both p.bash and p.zsh updated in lockstep
-- [ ] All phase tests pass
-- [ ] No regressions in previous rp tests
+- [x] `rp` with a history entry pointing to a deleted directory shows a clear message and removes the entry
+- [x] `rp` with a mix of valid and stale entries only shows valid ones in the picker
+- [x] `rp --prune` removes all entries pointing to nonexistent directories and reports count
+- [x] `rp --prune` with no stale entries reports "No stale entries found"
+- [x] Tests cover: stale single entry, stale entry in multi-list, `--prune` with stale entries, `--prune` with no stale entries
+- [x] Both p.bash and p.zsh updated in lockstep
+- [x] All phase tests pass
+- [x] No regressions in previous rp tests
