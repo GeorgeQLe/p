@@ -16,20 +16,20 @@
 - [x] Step 3.1: Write failing tests for all three items
 
 ### Implementation
-- Step 3.2: Add last-category guard to `_pconfig_remove`
-- Step 3.3: Optimize `_p_classify_dirs` with parent-stack approach
-- Step 3.4: Fix `_p_doctor` cache reporting for empty files
-- Step 3.5: Run tests and verify all pass
+- [x] Step 3.2: Add last-category guard to `_pconfig_remove`
+- [x] Step 3.3: Optimize `_p_classify_dirs` with parent-stack approach
+- [x] Step 3.4: Fix `_p_doctor` cache reporting for empty files
+- [x] Step 3.5: Run tests and verify all pass
 
 ### Milestone: Config & Doctor Polish Complete
 **Acceptance Criteria:**
-- [ ] `pconfig remove` with only 1 category remaining refuses and shows a clear message
-- [ ] Test covers the last-category guard
-- [ ] `_p_classify_dirs` produces identical output to the current implementation (verified by existing tests) with reduced iteration count
-- [ ] `p --doctor` reports cache as "empty" when cache file exists but is zero bytes
-- [ ] Test covers doctor cache reporting for empty vs. populated cache files
-- [ ] Both p.bash and p.zsh updated in lockstep
-- [ ] All tests pass, no regressions
+- [x] `pconfig remove` with only 1 category remaining refuses and shows a clear message
+- [x] Test covers the last-category guard
+- [x] `_p_classify_dirs` produces identical output to the current implementation (verified by existing tests) with reduced iteration count
+- [x] `p --doctor` reports cache as "empty" when cache file exists but is zero bytes
+- [x] Test covers doctor cache reporting for empty vs. populated cache files
+- [x] Both p.bash and p.zsh updated in lockstep
+- [x] All tests pass, no regressions
 
 ---
 

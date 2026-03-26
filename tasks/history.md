@@ -33,3 +33,12 @@
 - Added 3 tests: last-category guard, empty cache doctor, populated cache doctor
 - 2 fail as expected (red phase for Steps 3.2 and 3.4), 1 passes (populated cache)
 - 134 total tests, same 2 expected failures in both bash and zsh
+
+## 2026-03-26 — Phase 3, Steps 3.2-3.4: Implementation
+- Added last-category guard to `_pconfig_remove` (both files)
+- Optimized `_p_classify_dirs` from O(n²) to O(n) with parent-stack approach (both files)
+- Fixed `_p_doctor` cache reporting: empty files now show "present (empty)" instead of "valid"
+- Fixed test to account for 5 default categories (not 3)
+- All 134 tests pass (bash + zsh), shellcheck clean
+- Phase 3 complete: all acceptance criteria met
+- Also removed `.github/workflows/ci.yml` per user request
