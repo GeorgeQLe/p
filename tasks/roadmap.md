@@ -122,17 +122,17 @@ Address all findings from the expert code review, sequenced by user impact: firs
 - `_p_doctor`: check cache files are non-empty before reporting "valid"; report "empty" or "present (empty)" for zero-byte cache files
 
 **Acceptance Criteria:**
-- [ ] `pconfig remove` with only 1 category remaining refuses and shows a clear message
-- [ ] Test covers the last-category guard
-- [ ] `_p_classify_dirs` produces identical output to the current implementation (verified by existing tests) with reduced iteration count
-- [ ] `p --doctor` reports cache as "empty" when cache file exists but is zero bytes
-- [ ] Test covers doctor cache reporting for empty vs. populated cache files
-- [ ] Both p.bash and p.zsh updated in lockstep
+- [x] `pconfig remove` with only 1 category remaining refuses and shows a clear message
+- [x] Test covers the last-category guard
+- [x] `_p_classify_dirs` produces identical output to the current implementation (verified by existing tests) with reduced iteration count
+- [x] `p --doctor` reports cache as "empty" when cache file exists but is zero bytes
+- [x] Test covers doctor cache reporting for empty vs. populated cache files
+- [x] Both p.bash and p.zsh updated in lockstep
 
 **On Completion**:
-- Deviations from plan:
-- Tech debt / follow-ups:
-- Ready for next phase: yes/no
+- Deviations from plan: Default categories are 5 (not 3 as originally assumed in test). Parent-stack in zsh uses `stack[-1]=()` for pop. No `_p_classify_dirs` optimization criterion wasn't testable directly but existing tests verify identical output.
+- Tech debt / follow-ups: None
+- Ready for next phase: N/A — all phases complete
 
 ---
 
