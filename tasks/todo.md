@@ -67,101 +67,43 @@
 
 ---
 
-**Implementation plan for Step 2.1:**
+**Implementation plan for Step 2.2:**
 
-Add the following tests to `tests/p.bats` (after the existing `rp` tests, before the end of file):
+Replace `compgen -W` (which splits on spaces) with line-by-line prefix matching in all 3 bash completion functions. Zsh versions use `compadd` which already handles spaces — no changes needed there.
 
-1. **`_p_completion populates candidates from cache`** (bash-only test):
+**Files to modify:** `p.bash` only (3 functions)
+
+1. **`_p_completion`** (p.bash line 412):
+   Replace:
    ```bash
-   @test "_p_completion populates candidates from cache" {
-     [[ "${TEST_SHELL:-bash}" == "bash" ]] || skip "bash-specific completion"
-     local cache_dir="$TEST_CACHE_DIR"
-     printf '%s\n' "alpha" "beta" "gamma" > "$cache_dir/p_completion"
-     COMP_WORDS=("p" "al"); COMP_CWORD=1; COMPREPLY=()
-     _p_completion
-     [[ "${COMPREPLY[*]}" == *"alpha"* ]]
-   }
+   mapfile -t COMPREPLY < <(compgen -W "$(cat "$cache_file")" -- "$cur")
+   ```
+   With:
+   ```bash
+   local candidates=()
+   while IFS= read -r name; do
+     [[ "$name" == "$cur"* ]] && candidates+=("$name")
+   done < "$cache_file"
+   COMPREPLY=("${candidates[@]}")
    ```
 
-2. **`_p_completion skips after first argument`**:
+2. **`_sp_completion`** (p.bash line 531):
+   Same replacement — replace the `mapfile -t COMPREPLY < <(compgen -W ...)` line with the same pattern reading from `$cache_file`.
+
+3. **`_rp_completion`** (p.bash lines 687-688):
+   Current:
    ```bash
-   @test "_p_completion skips completion after first argument" {
-     [[ "${TEST_SHELL:-bash}" == "bash" ]] || skip "bash-specific completion"
-     printf '%s\n' "alpha" > "$TEST_CACHE_DIR/p_completion"
-     COMP_WORDS=("p" "alpha" ""); COMP_CWORD=2; COMPREPLY=()
-     _p_completion
-     (( ${#COMPREPLY[@]} == 0 ))
-   }
+   names=$(sed 's|.*/||' "$history_file" | sort -u)
+   mapfile -t COMPREPLY < <(compgen -W "$names" -- "$cur")
+   ```
+   Replace with:
+   ```bash
+   local candidates=()
+   while IFS= read -r name; do
+     [[ "$name" == "$cur"* ]] && candidates+=("$name")
+   done < <(sed 's|.*/||' "$history_file" | sort -u)
+   COMPREPLY=("${candidates[@]}")
    ```
 
-3. **`_p_completion handles project names with spaces`** (will fail before Step 2.2 fix):
-   ```bash
-   @test "_p_completion handles project names with spaces" {
-     [[ "${TEST_SHELL:-bash}" == "bash" ]] || skip "bash-specific completion"
-     printf '%s\n' "my project" "other" > "$TEST_CACHE_DIR/p_completion"
-     COMP_WORDS=("p" "my"); COMP_CWORD=1; COMPREPLY=()
-     _p_completion
-     [[ "${COMPREPLY[*]}" == *"my project"* ]]
-   }
-   ```
-
-4. **`_sp_completion populates candidates from cache`**:
-   ```bash
-   @test "_sp_completion populates candidates from cache" {
-     [[ "${TEST_SHELL:-bash}" == "bash" ]] || skip "bash-specific completion"
-     printf '%s\n' "subrepo-a" "subrepo-b" > "$TEST_CACHE_DIR/sp_completion"
-     COMP_WORDS=("sp" "sub"); COMP_CWORD=1; COMPREPLY=()
-     _sp_completion
-     [[ "${COMPREPLY[*]}" == *"subrepo-a"* ]]
-   }
-   ```
-
-5. **`_sp_completion skips after first argument`**:
-   ```bash
-   @test "_sp_completion skips completion after first argument" {
-     [[ "${TEST_SHELL:-bash}" == "bash" ]] || skip "bash-specific completion"
-     printf '%s\n' "subrepo-a" > "$TEST_CACHE_DIR/sp_completion"
-     COMP_WORDS=("sp" "subrepo-a" ""); COMP_CWORD=2; COMPREPLY=()
-     _sp_completion
-     (( ${#COMPREPLY[@]} == 0 ))
-   }
-   ```
-
-6. **`_rp_completion populates candidates from history`**:
-   ```bash
-   @test "_rp_completion populates candidates from history" {
-     [[ "${TEST_SHELL:-bash}" == "bash" ]] || skip "bash-specific completion"
-     printf '%s\n' "/home/user/projects/foo" "/home/user/projects/bar" > "$TEST_CACHE_DIR/p_history"
-     COMP_WORDS=("rp" "f"); COMP_CWORD=1; COMPREPLY=()
-     _rp_completion
-     [[ "${COMPREPLY[*]}" == *"foo"* ]]
-   }
-   ```
-
-7. **`_rp_completion skips after first argument`**:
-   ```bash
-   @test "_rp_completion skips completion after first argument" {
-     [[ "${TEST_SHELL:-bash}" == "bash" ]] || skip "bash-specific completion"
-     printf '%s\n' "/home/user/projects/foo" > "$TEST_CACHE_DIR/p_history"
-     COMP_WORDS=("rp" "foo" ""); COMP_CWORD=2; COMPREPLY=()
-     _rp_completion
-     (( ${#COMPREPLY[@]} == 0 ))
-   }
-   ```
-
-8. **`_rp_completion with missing history returns cleanly`**:
-   ```bash
-   @test "_rp_completion with missing history returns cleanly" {
-     [[ "${TEST_SHELL:-bash}" == "bash" ]] || skip "bash-specific completion"
-     rm -f "$TEST_CACHE_DIR/p_history"
-     COMP_WORDS=("rp" ""); COMP_CWORD=1; COMPREPLY=()
-     _rp_completion
-     (( ${#COMPREPLY[@]} == 0 ))
-   }
-   ```
-
-**Key notes:**
-- All completion tests are bash-only since zsh completion uses `compadd` which can't easily be tested in bats
-- The `TEST_CACHE_DIR` variable (set in the test setup) points to `$XDG_CACHE_HOME/p` — the completion functions read cache from `${XDG_CACHE_HOME:-$HOME/.cache}/p`
-- Test 3 (spaces) is the one that will fail before the Step 2.2 fix — this validates the TDD approach
-- Check the test setup function to verify `TEST_CACHE_DIR` is correctly set to the XDG cache path used by the completion functions
+**Tests that should pass after this step:** All 128 tests, including test 123 (spaces).
+**Verification:** `bats tests/p.bats`, `TEST_SHELL=zsh bats tests/p.bats`, `shellcheck -s bash p.bash`
