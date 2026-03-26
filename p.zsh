@@ -574,7 +574,7 @@ EOF
       if (( ${#keep[@]} > 0 )); then
         printf '%s\n' "${keep[@]}" > "$history_file"
       else
-        > "$history_file"
+        true > "$history_file"
       fi
       echo "Removed $removed stale entries."
     fi
@@ -603,6 +603,29 @@ EOF
   while IFS= read -r line; do
     [[ -n "$line" ]] && all_entries+=("$line")
   done < "$history_file"
+
+  # Filter out stale entries (deleted directories)
+  local valid_entries=() stale_count=0
+  for entry in "${all_entries[@]}"; do
+    if [[ -d "$entry" ]]; then
+      valid_entries+=("$entry")
+    else
+      echo "rp: removed stale project: ${entry##*/} ($entry)" >&2
+      ((stale_count++))
+    fi
+  done
+  if (( stale_count > 0 )); then
+    if (( ${#valid_entries[@]} > 0 )); then
+      printf '%s\n' "${valid_entries[@]}" > "$history_file"
+    else
+      true > "$history_file"
+    fi
+  fi
+  all_entries=("${valid_entries[@]}")
+  if (( ${#all_entries[@]} == 0 )); then
+    echo "No project history yet. Use p, sp, or np to visit projects." >&2
+    return 1
+  fi
 
   # Filter by query if given
   local matches=()
