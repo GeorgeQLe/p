@@ -1246,6 +1246,52 @@ CONF
   [[ "$output" == *"2) alpha"* ]]
 }
 
+@test "rp with stale single entry shows message and removes it" {
+  _make_project "libs/stale-lib"
+  run _p p stale-lib
+  rm -rf "$P_BASE/libs/stale-lib"
+  run _p rp
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"no longer exists"* ]] || [[ "$output" == *"removed stale"* ]]
+}
+
+@test "rp with mix of valid and stale entries only shows valid ones" {
+  _make_project "libs/alpha"
+  _make_project "libs/beta"
+  run _p p alpha
+  run _p p beta
+  rm -rf "$P_BASE/libs/beta"
+  run _p rp
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"alpha"* ]]
+  [[ "$output" != *"beta"* ]] || [[ "$output" == *"stale"* ]]
+}
+
+@test "rp --prune removes stale entries and reports count" {
+  _make_project "libs/alpha"
+  _make_project "libs/beta"
+  run _p p alpha
+  run _p p beta
+  rm -rf "$P_BASE/libs/alpha" "$P_BASE/libs/beta"
+  run _p rp --prune
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Removed 2 stale"* ]]
+}
+
+@test "rp --prune with no stale entries reports nothing to prune" {
+  _make_project "libs/my-lib"
+  run _p p my-lib
+  run _p rp --prune
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"No stale entries"* ]]
+}
+
+@test "rp --help mentions --prune" {
+  run _p rp --help
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"--prune"* ]]
+}
+
 @test "p --help mentions rp" {
   run _p p --help
   [ "$status" -eq 0 ]
