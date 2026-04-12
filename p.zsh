@@ -1020,6 +1020,12 @@ EOF
   echo "→ $(pwd)"
   _p_record_visit "$(pwd)"
 
+  # Post-np hook (e.g., register project in external systems)
+  if [[ -n "${P_NP_HOOK:-}" && -x "$P_NP_HOOK" ]]; then
+    "$P_NP_HOOK" "$name" "$cat_name" "$cat_type" "$target" || \
+      printf 'np: warning: post-hook exited %d\n' $? >&2
+  fi
+
   # Invalidate completion cache so new project is immediately tab-completable
   local cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/p"
   rm -f "$cache_dir/p_completion" "$cache_dir/sp_completion"

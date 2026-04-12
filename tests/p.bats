@@ -1193,6 +1193,88 @@ CONF
 }
 
 # ============================================================
+# np — P_NP_HOOK post-creation hook
+# ============================================================
+
+# Helper: run a p command with P_NP_HOOK set
+_p_hook() {
+  local hook="$1"; shift
+  if [[ "$SHELL_VARIANT" == "zsh" ]]; then
+    zsh -f -c "
+      compdef() { :; }
+      autoload() { :; }
+      export P_BASE='$P_BASE' P_CONFIG='$P_CONFIG' HOME='$HOME' P_NP_HOOK='$hook'
+      source '$SOURCE_FILE'
+      \"\$@\"
+    " -- "$@"
+  else
+    local bash_bin="${BASH_4_BIN:-/opt/homebrew/bin/bash}"
+    "$bash_bin" -c "
+      complete() { :; }
+      export P_BASE='$P_BASE' P_CONFIG='$P_CONFIG' HOME='$HOME' P_NP_HOOK='$hook'
+      source '$SOURCE_FILE'
+      \"\$@\"
+    " -- "$@"
+  fi
+}
+
+@test "np calls P_NP_HOOK with correct arguments" {
+  local hook="$TEST_DIR/test-hook"
+  local log="$TEST_DIR/hook-log"
+  cat > "$hook" <<'SCRIPT'
+#!/usr/bin/env bash
+printf '%s\n' "$@" > "$HOME/hook-log"
+SCRIPT
+  chmod +x "$hook"
+  run _p_hook "$hook" np my-proj --category libs
+  [ "$status" -eq 0 ]
+  [ -f "$HOME/hook-log" ]
+  # 4 lines: name, category, type, path
+  local lines
+  lines=$(wc -l < "$HOME/hook-log")
+  [ "$lines" -eq 4 ]
+  head -1 "$HOME/hook-log" | grep -q "my-proj"
+  sed -n '2p' "$HOME/hook-log" | grep -q "libs"
+  sed -n '3p' "$HOME/hook-log" | grep -q "flat"
+  sed -n '4p' "$HOME/hook-log" | grep -q "libs/my-proj"
+}
+
+@test "np warns but succeeds when P_NP_HOOK fails" {
+  local hook="$TEST_DIR/fail-hook"
+  cat > "$hook" <<'SCRIPT'
+#!/usr/bin/env bash
+exit 42
+SCRIPT
+  chmod +x "$hook"
+  run _p_hook "$hook" np my-proj --category libs
+  [ "$status" -eq 0 ]
+  [ -d "$P_BASE/libs/my-proj" ]
+  [[ "$output" == *"warning: post-hook exited 42"* ]]
+}
+
+@test "np does not call hook when P_NP_HOOK is unset" {
+  local log="$TEST_DIR/hook-log"
+  # P_NP_HOOK is not set in the normal _p helper
+  run _p np my-proj --category libs
+  [ "$status" -eq 0 ]
+  [ -d "$P_BASE/libs/my-proj" ]
+  [ ! -f "$log" ]
+}
+
+@test "np does not call hook when P_NP_HOOK is not executable" {
+  local hook="$TEST_DIR/noexec-hook"
+  cat > "$hook" <<'SCRIPT'
+#!/usr/bin/env bash
+touch "$HOME/hook-ran"
+SCRIPT
+  # intentionally NOT chmod +x
+  run _p_hook "$hook" np my-proj --category libs
+  [ "$status" -eq 0 ]
+  [ -d "$P_BASE/libs/my-proj" ]
+  [ ! -f "$HOME/hook-ran" ]
+}
+
+# ============================================================
 # rp — recent projects
 # ============================================================
 

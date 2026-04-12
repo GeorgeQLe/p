@@ -159,12 +159,43 @@ pconfig --help       # show help
 
 `p config` is an alias for `pconfig`, so `p config show`, `p config add`, etc. all work.
 
+## Hooks
+
+### `P_NP_HOOK` — post-creation hook for `np`
+
+Set `P_NP_HOOK` to the path of an executable script and it will be called every time `np` creates a new project. Use it to automate post-creation tasks like creating a GitHub repo, registering the project in a tracker, or notifying a channel.
+
+```bash
+export P_NP_HOOK="$HOME/.p/hooks/after-np"
+```
+
+The hook receives four positional arguments:
+
+| Argument | Description | Example |
+|----------|-------------|---------|
+| `$1` | Project name | `my-app` |
+| `$2` | Category name | `web` |
+| `$3` | Category type | `lifecycle` |
+| `$4` | Full path to the created directory | `/home/user/projects/web/dev/my-app` |
+
+**Failure semantics:** If the hook exits non-zero, `np` prints a warning to stderr but still succeeds (the project directory is already created). The hook is skipped entirely if `P_NP_HOOK` is unset or points to a non-executable file.
+
+**Example** — auto-create a GitHub repo:
+
+```bash
+#!/usr/bin/env bash
+# ~/.p/hooks/after-np
+name="$1" path="$4"
+cd "$path" && gh repo create "$name" --private --source=. --push
+```
+
 ## Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `P_BASE` | `~/projects` | Root directory to scan for projects |
 | `P_CONFIG` | `~/.config/p/categories.conf` | Path to category configuration file |
+| `P_NP_HOOK` | *(unset)* | Path to executable called after `np` creates a project |
 
 ## Configuration
 
