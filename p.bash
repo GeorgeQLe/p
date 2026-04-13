@@ -803,6 +803,25 @@ _p_resolve_dev_tool() {
   echo "$tool"
 }
 
+_np_name_from_url() {
+  local url="$1"
+  # Strip trailing slashes and .git suffix
+  url="${url%/}"
+  url="${url%.git}"
+  # Take last path segment
+  local derived="${url##*/}"
+  # Lowercase, replace _ . and spaces with hyphens, collapse doubles
+  derived="${derived,,}"
+  derived="${derived//[_. ]/-}"
+  while [[ "$derived" == *--* ]]; do
+    derived="${derived//--/-}"
+  done
+  # Strip leading/trailing hyphens
+  derived="${derived#-}"
+  derived="${derived%-}"
+  printf '%s' "$derived"
+}
+
 np() {
   if [[ "$1" == "--help" || "$1" == "-h" ]]; then
     cat <<'EOF'
@@ -812,11 +831,13 @@ Usage:
   np [name]        Interactive project scaffolder
   np --help        Show this help message
   np name --category CAT [--sandbox-type TYPE]
+  np --clone URL [name] --category CAT [--sandbox-type TYPE]
                    Non-interactive mode
 
 Options:
   --category CAT       Category name (required for non-interactive mode)
   --sandbox-type TYPE  Sandbox sub-type (required if category type is sandbox)
+  --clone URL          Clone a git repo instead of creating an empty project
 
 Creates the project directory, initializes a git repo, and cd's into it.
 Project names must be kebab-case: lowercase letters, numbers, and hyphens.
@@ -836,7 +857,7 @@ EOF
   local sandbox_types=("${_p_sandbox_types[@]}")
 
   # Parse arguments
-  local name="" opt_category="" opt_sandbox_type=""
+  local name="" opt_category="" opt_sandbox_type="" opt_clone=""
   local positional_set=false
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -864,9 +885,17 @@ EOF
         opt_sandbox_type="$2"
         shift 2
         ;;
+      --clone)
+        if [[ $# -lt 2 ]]; then
+          echo "np: --clone requires a URL" >&2
+          return 1
+        fi
+        opt_clone="$2"
+        shift 2
+        ;;
       -*)
         echo "np: unknown option: $1" >&2
-        echo "Usage: np [name] [--category CAT] [--sandbox-type TYPE]" >&2
+        echo "Usage: np [name] [--category CAT] [--sandbox-type TYPE] [--clone URL]" >&2
         return 1
         ;;
       *)
@@ -879,7 +908,10 @@ EOF
     esac
   done
 
-  # 1. Get project name (prompt if not given)
+  # 1. Get project name (prompt if not given, derive from clone URL if available)
+  if [[ -z "$name" && -n "$opt_clone" ]]; then
+    name="$(_np_name_from_url "$opt_clone")"
+  fi
   if [[ -z "$name" ]]; then
     read -rp "Project name (kebab-case): " name
   fi
@@ -994,6 +1026,12 @@ EOF
     esac
   fi
 
+  # Interactive clone prompt (only when --clone was not already provided)
+  if [[ -z "$opt_category" && -z "$opt_clone" ]]; then
+    echo ""
+    read -rp "Clone from a git repo? (paste URL or leave blank to start fresh): " opt_clone
+  fi
+
   # 4. Check if already exists
   if [[ -d "$target" ]]; then
     echo "Directory already exists: $target" >&2
@@ -1005,6 +1043,9 @@ EOF
     echo ""
     echo "  Name:  $name"
     echo "  Path:  ${target#"$base"/}"
+    if [[ -n "$opt_clone" ]]; then
+      echo "  Clone: $opt_clone"
+    fi
     echo ""
     read -n1 -rp "Create project? (y/n) " confirm
     echo ""
@@ -1014,14 +1055,21 @@ EOF
     fi
   fi
 
-  mkdir -p "$target"
-  echo "Created: ${target#"$base"/}"
-
-  if command -v git >/dev/null 2>&1; then
-    git -C "$target" init
+  if [[ -n "$opt_clone" ]]; then
+    mkdir -p "$(dirname "$target")"
+    if ! git clone "$opt_clone" "$target"; then
+      echo "np: clone failed" >&2
+      return 1
+    fi
   else
-    echo "np: warning: git not found, skipping git init" >&2
+    mkdir -p "$target"
+    if command -v git >/dev/null 2>&1; then
+      git -C "$target" init
+    else
+      echo "np: warning: git not found, skipping git init" >&2
+    fi
   fi
+  echo "Created: ${target#"$base"/}"
 
   cd "$target" || return 1
   echo "→ $(pwd)"

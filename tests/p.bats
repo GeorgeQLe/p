@@ -1275,6 +1275,151 @@ SCRIPT
 }
 
 # ============================================================
+# np --clone
+# ============================================================
+
+# Helper: install a fake git wrapper that simulates clone into $TEST_DIR/bin
+_install_fakegit() {
+  mkdir -p "$TEST_DIR/bin"
+  cat > "$TEST_DIR/bin/git" <<'FAKESCRIPT'
+#!/bin/bash
+if [[ "$1" == "clone" ]]; then
+  mkdir -p "$3/.git"
+  exit 0
+elif [[ "$1" == "-C" && "$3" == "init" ]]; then
+  mkdir -p "$2/.git"
+  exit 0
+elif [[ "$1" == "init" ]]; then
+  exit 0
+fi
+FAKESCRIPT
+  chmod +x "$TEST_DIR/bin/git"
+}
+
+# Helper: install a fake git wrapper that fails on clone
+_install_fakegit_fail() {
+  mkdir -p "$TEST_DIR/bin"
+  cat > "$TEST_DIR/bin/git" <<'FAKESCRIPT'
+#!/bin/bash
+if [[ "$1" == "clone" ]]; then
+  echo "fatal: repository not found" >&2
+  exit 128
+elif [[ "$1" == "-C" && "$3" == "init" ]]; then
+  exit 0
+elif [[ "$1" == "init" ]]; then
+  exit 0
+fi
+FAKESCRIPT
+  chmod +x "$TEST_DIR/bin/git"
+}
+
+# Helper: run a p command with $TEST_DIR/bin prepended to PATH (for fake git)
+_p_withpath() {
+  local bash_bin="${BASH_4_BIN:-/opt/homebrew/bin/bash}"
+  if [[ "${SHELL_VARIANT:-bash}" == "zsh" ]]; then
+    PATH="$TEST_DIR/bin:$PATH" zsh -f -c "
+      compdef() { :; }
+      autoload() { :; }
+      export P_BASE='$P_BASE' P_CONFIG='$P_CONFIG' HOME='$HOME'
+      source '$SOURCE_FILE'
+      \"\$@\"
+    " -- "$@"
+  else
+    PATH="$TEST_DIR/bin:$PATH" "$bash_bin" -c "
+      complete() { :; }
+      export P_BASE='$P_BASE' P_CONFIG='$P_CONFIG' HOME='$HOME'
+      source '$SOURCE_FILE'
+      \"\$@\"
+    " -- "$@"
+  fi
+}
+
+@test "np --clone with explicit name clones into correct path" {
+  cat > "$P_CONFIG" <<'CONF'
+libs|flat|Libraries
+CONF
+  _install_fakegit
+  run _p_withpath np my-clone --clone https://github.com/user/repo.git --category libs
+  [ "$status" -eq 0 ]
+  [ -d "$P_BASE/libs/my-clone/.git" ]
+  [[ "$output" == *"Created:"* ]]
+}
+
+@test "np --clone derives name from URL when name omitted" {
+  cat > "$P_CONFIG" <<'CONF'
+libs|flat|Libraries
+CONF
+  _install_fakegit
+  run _p_withpath np --clone https://github.com/user/my-cool-repo.git --category libs
+  [ "$status" -eq 0 ]
+  [ -d "$P_BASE/libs/my-cool-repo/.git" ]
+}
+
+@test "np --clone name derivation converts underscores and dots to hyphens" {
+  run _p _np_name_from_url "https://github.com/user/My_Cool.Repo.git"
+  [ "$status" -eq 0 ]
+  [[ "$output" == "my-cool-repo" ]]
+}
+
+@test "np --clone failure returns error gracefully" {
+  cat > "$P_CONFIG" <<'CONF'
+libs|flat|Libraries
+CONF
+  _install_fakegit_fail
+  run _p_withpath np my-fail --clone https://github.com/user/nonexistent.git --category libs
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"clone failed"* ]]
+}
+
+@test "np --clone with no value gives error" {
+  run _p np --clone
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"--clone requires a URL"* ]]
+}
+
+@test "np --clone into lifecycle category" {
+  cat > "$P_CONFIG" <<'CONF'
+tools|lifecycle|Tools
+CONF
+  _install_fakegit
+  run _p_withpath np cloned-proj --clone https://github.com/user/repo --category tools
+  [ "$status" -eq 0 ]
+  [ -d "$P_BASE/tools/dev/cloned-proj/.git" ]
+}
+
+@test "np --clone records visit to history" {
+  cat > "$P_CONFIG" <<'CONF'
+libs|flat|Libraries
+CONF
+  _install_fakegit
+  run _p_withpath np cloned-lib --clone https://github.com/user/repo.git --category libs
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"→"* ]]
+}
+
+@test "_np_name_from_url handles various URL formats" {
+  # HTTPS with .git
+  run _p _np_name_from_url "https://github.com/user/my-repo.git"
+  [[ "$output" == "my-repo" ]]
+
+  # HTTPS without .git
+  run _p _np_name_from_url "https://github.com/user/my-repo"
+  [[ "$output" == "my-repo" ]]
+
+  # SSH URL
+  run _p _np_name_from_url "git@github.com:user/my-repo.git"
+  [[ "$output" == "my-repo" ]]
+
+  # Trailing slash
+  run _p _np_name_from_url "https://github.com/user/my-repo/"
+  [[ "$output" == "my-repo" ]]
+
+  # Underscores and dots
+  run _p _np_name_from_url "https://github.com/user/My_Project.Name.git"
+  [[ "$output" == "my-project-name" ]]
+}
+
+# ============================================================
 # rp — recent projects
 # ============================================================
 
