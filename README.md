@@ -62,7 +62,7 @@ p --version    # show version
 p config show  # manage configuration (alias for pconfig)
 ```
 
-Detects projects by `.git` directory presence. Tab completion uses a 5-minute cache; stale caches are served immediately while a background refresh rebuilds suggestions.
+Detects projects by `.git` directory presence. Tab completion uses a 5-minute cache; stale caches are served immediately while a background refresh rebuilds suggestions. If no completion cache exists yet, Tab starts a background rebuild and returns without blocking; run `p --warm-cache` when you want suggestions ready immediately.
 
 ### `sp` — project search
 

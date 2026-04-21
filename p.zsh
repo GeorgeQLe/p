@@ -4,6 +4,8 @@
 
 _P_VERSION="1.0.0"
 _P_HISTORY_MAX=50
+_P_COMPLETION_STALE_CHECK_INTERVAL=60
+_p_completion_last_stale_check=${SECONDS:-0}
 
 # Ensure zsh completion system is available
 if ! typeset -f compdef > /dev/null 2>&1; then
@@ -102,9 +104,22 @@ _p_refresh_completion_caches_async() {
 
 _p_ensure_completion_cache() {
   local cache_file="$1"
+  local mode="${2:-blocking}"
 
   if [[ ! -f "$cache_file" ]]; then
+    if [[ "$mode" == "async" ]]; then
+      _p_refresh_completion_caches_async
+      return 1
+    fi
     _p_rebuild_completion_caches >/dev/null 2>&1
+  elif [[ "$mode" == "async" ]]; then
+    local now_seconds="${SECONDS:-0}"
+    if (( now_seconds - _p_completion_last_stale_check >= _P_COMPLETION_STALE_CHECK_INTERVAL )); then
+      _p_completion_last_stale_check="$now_seconds"
+      if _p_cache_file_stale "$cache_file"; then
+        _p_refresh_completion_caches_async
+      fi
+    fi
   elif _p_cache_file_stale "$cache_file"; then
     _p_refresh_completion_caches_async
   fi
@@ -486,11 +501,15 @@ _p_completion() {
   [[ -d "$cache_dir" ]] || mkdir -p "$cache_dir"
   local cache_file="$cache_dir/p_completion"
 
-  _p_ensure_completion_cache "$cache_file" || return 0
+  _p_ensure_completion_cache "$cache_file" async || return 0
   [[ -f "$cache_file" ]] || return 0
 
-  # shellcheck disable=SC2086  # zsh (f) flag handles splitting correctly
-  compadd - ${(f)"$(cat "$cache_file")"}
+  local cur="${words[CURRENT]}"
+  local candidates=() name
+  while IFS= read -r name; do
+    [[ "$name" == "$cur"* ]] && candidates+=("$name")
+  done < "$cache_file"
+  compadd -a candidates
 }
 compdef _p_completion p
 
@@ -600,11 +619,15 @@ _sp_completion() {
   [[ -d "$cache_dir" ]] || mkdir -p "$cache_dir"
   local cache_file="$cache_dir/sp_completion"
 
-  _p_ensure_completion_cache "$cache_file" || return 0
+  _p_ensure_completion_cache "$cache_file" async || return 0
   [[ -f "$cache_file" ]] || return 0
 
-  # shellcheck disable=SC2086  # zsh (f) flag handles splitting correctly
-  compadd - ${(f)"$(cat "$cache_file")"}
+  local cur="${words[CURRENT]}"
+  local candidates=() name
+  while IFS= read -r name; do
+    [[ "$name" == "$cur"* ]] && candidates+=("$name")
+  done < "$cache_file"
+  compadd -a candidates
 }
 compdef _sp_completion sp
 

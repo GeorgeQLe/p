@@ -188,11 +188,16 @@ set_completion_state() {
   fi
 }
 
-step_actual_p_completion_cold() {
+step_actual_p_completion_missing_cache() {
   export XDG_CACHE_HOME="$tmp_dir/cache-home"
   rm -rf "$XDG_CACHE_HOME/p"
   set_completion_state
   _p_completion >/dev/null
+}
+
+step_prime_actual_completion_cache() {
+  export XDG_CACHE_HOME="$tmp_dir/cache-home"
+  _p_rebuild_completion_caches >/dev/null
 }
 
 step_actual_p_completion_warm() {
@@ -349,7 +354,8 @@ time_call "p query match" step_p_match || exit 1
 time_call "build shared completion caches" step_shared_completion_cache_build || exit 1
 time_call "filter p candidates" step_completion_filter || exit 1
 time_call "build rp names" step_rp_completion_names || exit 1
-time_call "actual _p_completion cold" step_actual_p_completion_cold || exit 1
+time_call "actual _p_completion missing" step_actual_p_completion_missing_cache || exit 1
+time_call "prime actual cache" step_prime_actual_completion_cache || exit 1
 time_call "actual _p_completion warm" step_actual_p_completion_warm || exit 1
 
 echo ""

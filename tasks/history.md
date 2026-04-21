@@ -73,3 +73,12 @@
 - Preserved the mobile default category/config example update already present in the worktree
 - Validation: shellcheck clean for both shell variants and timing script; all 145 tests pass in bash and zsh
 - Timing: cold `_p_completion` now measures about 140-160 ms locally, warm about 10-13 ms, stale-cache completion about 8-12 ms
+
+## 2026-04-21 — Follow-up: remove missing-cache completion blocking
+- User reported tab completion still felt laggy after the first cache optimization
+- Found missing-cache completion still rebuilt synchronously on Tab, which kept the roughly 170 ms scan after invalidation or when `sp_completion` was absent
+- Changed `p` and `sp` completion to start cache refresh asynchronously and return immediately when their cache file is missing
+- Throttled stale-cache age checks in the completion hot path to avoid repeated `stat`/`date` work during normal repeated Tab presses
+- Changed zsh completion to read cache files in-shell and pass only prefix-matched candidates to `compadd`
+- Updated timing diagnostics to report missing-cache completion separately from explicit cache priming
+- Timing: missing-cache `_p_completion` now returns in about 14-18 ms while refresh runs in the background; warm completion measures about 5-7 ms locally

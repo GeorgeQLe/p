@@ -1620,6 +1620,27 @@ _run_completion() {
   [[ "$output" != *"beta"* ]]
 }
 
+@test "_p_completion does not synchronously rebuild missing cache" {
+  [[ "${TEST_SHELL:-bash}" == "bash" ]] || skip "bash-specific completion"
+  _make_project "libs/alpha"
+
+  local bash_bin="${BASH_4_BIN:-/opt/homebrew/bin/bash}"
+  run "$bash_bin" -c "
+    complete() { :; }
+    export P_BASE='$P_BASE' P_CONFIG='$P_CONFIG' HOME='$HOME'
+    source '$SOURCE_FILE'
+    _p_rebuild_completion_caches() { printf 'SYNC_REBUILD\n'; return 0; }
+    _p_refresh_completion_caches_async() { printf 'ASYNC_REFRESH\n'; return 0; }
+    COMP_WORDS=(p a); COMP_CWORD=1; COMPREPLY=()
+    _p_completion
+    printf 'REPLIES=%s\n' \"\${#COMPREPLY[@]}\"
+  "
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"ASYNC_REFRESH"* ]]
+  [[ "$output" != *"SYNC_REBUILD"* ]]
+  [[ "$output" == *"REPLIES=0"* ]]
+}
+
 @test "_p_completion skips completion after first argument" {
   [[ "${TEST_SHELL:-bash}" == "bash" ]] || skip "bash-specific completion"
   local cache_dir="$HOME/.cache/p"

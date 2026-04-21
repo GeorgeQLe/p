@@ -30,6 +30,7 @@
 - Cold zsh `_p_completion`: reduced from about 500 ms to about 140 ms in the timing diagnostic.
 - Warm zsh `_p_completion`: about 10 ms.
 - Stale-cache completion: about 8-12 ms while refresh runs in the background.
+- Follow-up after user report: missing-cache completion no longer blocks on rebuild; it returns in about 14-18 ms and refreshes in the background. Warm completion is about 5-7 ms.
 
 ### Outstanding
 - [ ] Manual smoke test in an interactive shell after re-sourcing `p.zsh` or `p.bash`: press Tab for `p <prefix>` and confirm suggestions appear without visible lag.
