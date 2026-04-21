@@ -82,3 +82,10 @@
 - Changed zsh completion to read cache files in-shell and pass only prefix-matched candidates to `compadd`
 - Updated timing diagnostics to report missing-cache completion separately from explicit cache priming
 - Timing: missing-cache `_p_completion` now returns in about 14-18 ms while refresh runs in the background; warm completion measures about 5-7 ms locally
+
+## 2026-04-21 — Parallelize project directory scans
+- Added a shared bounded parallel finder for `.git` directory discovery in both bash and zsh
+- `p`, `sp`, completion cache rebuilds, and timing diagnostics now scan top-level categories concurrently
+- Added `P_FIND_PARALLELISM` to tune the number of concurrent category scans, defaulting to 4
+- Preserved documented "under P_BASE" behavior for hidden top-level directories and for `P_BASE` itself when it is a git project
+- Timing: `_p_find_all_dirs` measured about 110-125 ms locally after the hidden-directory-safe parallelization fix

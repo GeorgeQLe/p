@@ -15,17 +15,89 @@ fi
 # Directory where this script lives (captured at source time)
 _p_origin_dir="${0:A:h}"
 
+_p_find_parallelism() {
+  local jobs="${P_FIND_PARALLELISM:-4}"
+  [[ "$jobs" =~ ^[0-9]+$ ]] || jobs=4
+  (( jobs > 0 )) || jobs=1
+  echo "$jobs"
+}
+
+_p_find_git_dirs() {
+  local root="$1"
+  local maxdepth="$2"
+  find "$root" -maxdepth "$maxdepth" -type d \
+    \( -name node_modules -prune -o -name .git -prune -print \) \
+    2>/dev/null \
+  | sed 's|/\.git$||'
+}
+
+_p_find_git_dirs_parallel() {
+  setopt local_options no_bgnice
+
+  local maxdepth="$1"
+  shift
+  (( $# > 0 )) || return 0
+
+  local tmp_dir
+  tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/p-find.XXXXXX")" || return 1
+
+  local max_jobs active idx root out pid
+  local files=() pids=()
+  max_jobs="$(_p_find_parallelism)"
+  active=0
+  idx=0
+
+  for root in "$@"; do
+    ((idx++))
+    out="$tmp_dir/$idx"
+    files+=("$out")
+    _p_find_git_dirs "$root" "$maxdepth" > "$out" &
+    pids+=("$!")
+    ((active++))
+
+    if (( active >= max_jobs )); then
+      for pid in "${pids[@]}"; do
+        wait "$pid" 2>/dev/null || true
+      done
+      pids=()
+      active=0
+    fi
+  done
+
+  for pid in "${pids[@]}"; do
+    wait "$pid" 2>/dev/null || true
+  done
+
+  cat "${files[@]}" | sort -u
+  rm -rf "$tmp_dir"
+}
+
+_p_find_top_level_dirs() {
+  local base="$1"
+  find "$base" -mindepth 1 -maxdepth 1 -type d \
+    \( -name node_modules -o -name .git \) -prune -o -type d -print \
+    2>/dev/null
+}
+
 # Returns all project directory paths (one per line)
 _p_find_all_dirs() {
+  setopt local_options null_glob
+
   local base="${P_BASE:-$HOME/projects}"
   if [[ ! -d "$base" ]]; then
     echo "p: P_BASE directory does not exist: $base" >&2
     return 1
   fi
-  find "$base" -maxdepth 5 -type d \
-    \( -name node_modules -prune -o -name .git -prune -print \) \
-    2>/dev/null \
-  | sed 's|/\.git$||' | sort -u
+
+  local roots=() d
+  while IFS= read -r d; do
+    [[ -d "$d" ]] && roots+=("$d")
+  done < <(_p_find_top_level_dirs "$base")
+
+  {
+    [[ -d "$base/.git" ]] && printf '%s\n' "$base"
+    _p_find_git_dirs_parallel 4 "${roots[@]}"
+  } | sort -u
 }
 
 _p_cache_dir() {
@@ -518,6 +590,8 @@ compdef _p_completion p
 #   sp foo      - search for directories matching "foo" within category folders
 #   sp foo<Tab> - tab-complete project names (prefix match)
 sp() {
+  setopt local_options null_glob
+
   if [[ "$1" == "--help" || "$1" == "-h" ]]; then
     cat <<'EOF'
 sp - search for projects by name
@@ -561,21 +635,17 @@ EOF
 
   # Collect top-level category dirs
   local top_dirs=()
-  for d in "$base"/*/; do
+  while IFS= read -r d; do
     [[ -d "$d" ]] && top_dirs+=("$d")
-  done
+  done < <(_p_find_top_level_dirs "$base")
 
   # Search within each category (depth 2-3 to cover flat + lifecycle + sandbox)
   local matches=()
-  for top in "${top_dirs[@]}"; do
-    while IFS= read -r dir; do
-      [[ -z "$dir" ]] && continue
-      local name="${dir##*/}"
-      [[ "${(L)name}" == *"$q"* ]] && matches+=("$dir")
-    done < <(find "$top" -maxdepth 4 -type d \
-      \( -name node_modules -prune -o -name .git -prune -print \) \
-      2>/dev/null | sed 's|/\.git$||')
-  done
+  while IFS= read -r dir; do
+    [[ -z "$dir" ]] && continue
+    local name="${dir##*/}"
+    [[ "${(L)name}" == *"$q"* ]] && matches+=("$dir")
+  done < <(_p_find_git_dirs_parallel 4 "${top_dirs[@]}")
 
   # Deduplicate via sort -u
   local unique=()

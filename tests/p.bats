@@ -154,6 +154,20 @@ _p() {
   [[ "$output" != *"node_modules"* ]]
 }
 
+@test "_p_find_all_dirs includes hidden top-level directories" {
+  mkdir -p "$P_BASE/.archive/old-tool/.git"
+  run _p _p_find_all_dirs
+  [ "$status" -eq 0 ]
+  [[ "$output" == *".archive/old-tool"* ]]
+}
+
+@test "_p_find_all_dirs includes P_BASE when it is a project" {
+  mkdir -p "$P_BASE/.git"
+  run _p _p_find_all_dirs
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"$P_BASE"* ]]
+}
+
 # ============================================================
 # _p_classify_dirs
 # ============================================================
@@ -480,6 +494,20 @@ CONF
   run _p p foo
   [ "$status" -ne 0 ]
   [[ "$output" == *"No projects"* ]]
+}
+
+@test "p finds project under hidden top-level directory" {
+  mkdir -p "$P_BASE/.archive/hidden-proj/.git"
+  run _p p hidden-proj
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"hidden-proj"* ]]
+}
+
+@test "p can jump to P_BASE when it is a project" {
+  mkdir -p "$P_BASE/.git"
+  run _p p "$(basename "$P_BASE")"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"→"* ]]
 }
 
 # ============================================================

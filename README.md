@@ -62,7 +62,7 @@ p --version    # show version
 p config show  # manage configuration (alias for pconfig)
 ```
 
-Detects projects by `.git` directory presence. Tab completion uses a 5-minute cache; stale caches are served immediately while a background refresh rebuilds suggestions. If no completion cache exists yet, Tab starts a background rebuild and returns without blocking; run `p --warm-cache` when you want suggestions ready immediately.
+Detects projects by `.git` directory presence. Directory scans run across top-level categories in parallel, defaulting to 4 jobs; set `P_FIND_PARALLELISM` to tune this. Tab completion uses a 5-minute cache; stale caches are served immediately while a background refresh rebuilds suggestions. If no completion cache exists yet, Tab starts a background rebuild and returns without blocking; run `p --warm-cache` when you want suggestions ready immediately.
 
 ### `sp` — project search
 
@@ -198,6 +198,7 @@ cd "$path" && gh repo create "$name" --private --source=. --push
 | `P_BASE` | `~/projects` | Root directory to scan for projects |
 | `P_CONFIG` | `~/.config/p/categories.conf` | Path to category configuration file |
 | `P_NP_HOOK` | *(unset)* | Path to executable called after `np` creates a project |
+| `P_FIND_PARALLELISM` | `4` | Number of top-level project directories to scan concurrently |
 
 ## Configuration
 
