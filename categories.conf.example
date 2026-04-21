@@ -18,6 +18,7 @@
 #   cp ~/.p/categories.conf.example ~/.config/p/categories.conf
 
 libs|flat|Reusable libraries and SDKs
+mobile|lifecycle|Mobile applications
 sandbox|sandbox|Experiments and learning
 scripts|flat|CLI tools and dev utilities
 tools|lifecycle|Desktop and CLI tools

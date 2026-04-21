@@ -660,15 +660,14 @@ CONF
 @test "pconfig remove refuses to remove last category" {
   run _p pconfig init
   [ "$status" -eq 0 ]
-  # Init creates 5 default categories. Remove 4.
-  run _p pconfig remove <<< "1"
-  [ "$status" -eq 0 ]
-  run _p pconfig remove <<< "1"
-  [ "$status" -eq 0 ]
-  run _p pconfig remove <<< "1"
-  [ "$status" -eq 0 ]
-  run _p pconfig remove <<< "1"
-  [ "$status" -eq 0 ]
+
+  local category_count
+  category_count=$(grep -Ec '^[^#[:space:]][^|]*\|[^|]*\|' "$P_CONFIG")
+  for (( i=1; i<category_count; i++ )); do
+    run _p pconfig remove <<< "1"
+    [ "$status" -eq 0 ]
+  done
+
   # Now only 1 remains — should refuse
   run _p pconfig remove <<< "1"
   [ "$status" -ne 0 ]
@@ -695,6 +694,33 @@ CONF
   run _p p --doctor
   [ "$status" -eq 0 ]
   [[ "$output" == *"p_completion"*"valid"* ]]
+}
+
+@test "p --warm-cache rebuilds completion caches" {
+  _make_project "tools/alpha"
+  _make_project "web/dev/beta"
+
+  run _p p --warm-cache
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"completion cache rebuilt"* ]]
+
+  local cache_dir="$HOME/.cache/p"
+  grep -Fx "alpha" "$cache_dir/p_completion"
+  grep -Fx "beta" "$cache_dir/p_completion"
+  grep -Fx "alpha" "$cache_dir/sp_completion"
+  grep -Fx "beta" "$cache_dir/sp_completion"
+}
+
+@test "pconfig rebuild-cache rebuilds completion caches" {
+  _make_project "tools/alpha"
+
+  run _p pconfig rebuild-cache
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Completion cache rebuilt"* ]]
+
+  local cache_dir="$HOME/.cache/p"
+  grep -Fx "alpha" "$cache_dir/p_completion"
+  grep -Fx "alpha" "$cache_dir/sp_completion"
 }
 
 # ============================================================

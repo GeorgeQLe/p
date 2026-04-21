@@ -55,13 +55,14 @@ p              # list all projects
 p foo          # cd to project matching "foo" (substring, case-insensitive)
 p foo<Tab>     # tab-complete project names
 p --origin     # cd to the directory containing p.bash/p.zsh
+p --warm-cache # rebuild tab-completion caches
 p --doctor     # check your p setup for issues
 p --help       # show help
 p --version    # show version
 p config show  # manage configuration (alias for pconfig)
 ```
 
-Detects projects by `.git` directory presence. Tab completion uses a 5-minute cache.
+Detects projects by `.git` directory presence. Tab completion uses a 5-minute cache; stale caches are served immediately while a background refresh rebuilds suggestions.
 
 ### `sp` — project search
 
@@ -152,6 +153,7 @@ pconfig add          # add a new category (interactive)
 pconfig remove       # remove a category (interactive)
 pconfig add-sandbox-type    # add a sandbox sub-type
 pconfig remove-sandbox-type # remove a sandbox sub-type
+pconfig rebuild-cache       # rebuild tab-completion caches
 pconfig path         # print config file path
 pconfig edit         # open config in $EDITOR
 pconfig --help       # show help

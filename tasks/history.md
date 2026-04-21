@@ -62,3 +62,14 @@
 - Clone failure returns clean error message
 - Added 8 tests with `_p_withpath`/`_install_fakegit` helpers for fake git injection
 - All 143 tests pass, no regressions
+
+## 2026-04-21 — Completion performance audit and optimization
+- Added `scripts/time-p.sh` to time project scan, classification, cache build, filtering, and cold/warm completion paths
+- Changed project discovery to prune `node_modules` and `.git` directories instead of only filtering output
+- Added shared atomic completion cache rebuild for both `p_completion` and `sp_completion`
+- Changed completion to serve stale caches immediately and refresh them in the background behind a lock
+- Added explicit cache rebuild commands: `p --warm-cache` and `pconfig rebuild-cache`
+- Documented the stale-cache refresh behavior in README and added focused tests
+- Preserved the mobile default category/config example update already present in the worktree
+- Validation: shellcheck clean for both shell variants and timing script; all 145 tests pass in bash and zsh
+- Timing: cold `_p_completion` now measures about 140-160 ms locally, warm about 10-13 ms, stale-cache completion about 8-12 ms

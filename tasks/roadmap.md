@@ -139,6 +139,20 @@ Address all findings from the expert code review, sequenced by user impact: firs
 ## Deferred / Future Work
 - `_p_find_all_dirs` exclusion list (only `node_modules` currently) — no user reports of false positives, revisit if reported
 
+## Ad Hoc: Completion Performance
+
+**Goal**: Reduce tab-completion latency and make completion performance measurable.
+
+**Completed 2026-04-21**:
+- [x] Added `scripts/time-p.sh` to time source, scan, classify, cache build, filtering, and cold/warm completion paths
+- [x] Changed project discovery to prune `node_modules` and `.git` traversal
+- [x] Rebuilt `p_completion` and `sp_completion` from one shared atomic cache builder
+- [x] Served stale completion caches immediately while refreshing in the background with a lock
+- [x] Added explicit refresh commands: `p --warm-cache` and `pconfig rebuild-cache`
+- [x] Added tests and README documentation for the new cache behavior
+
+**Result**: Cold completion dropped from about 500 ms to about 140-160 ms in local timing diagnostics; stale-cache completion returns in about 8-12 ms and refreshes asynchronously.
+
 ## Cross-Phase Concerns
 ### Testing
 - All phases must pass both bash and zsh test suites (`bats tests/p.bats` and `TEST_SHELL=zsh bats tests/p.bats`)

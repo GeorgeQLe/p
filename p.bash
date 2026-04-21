@@ -21,10 +21,92 @@ _p_find_all_dirs() {
     echo "p: P_BASE directory does not exist: $base" >&2
     return 1
   fi
-  find "$base" -maxdepth 5 -name '.git' -type d \
-    -not -path '*/node_modules/*' \
+  find "$base" -maxdepth 5 -type d \
+    \( -name node_modules -prune -o -name .git -prune -print \) \
     2>/dev/null \
   | sed 's|/\.git$||' | sort -u
+}
+
+_p_cache_dir() {
+  echo "${XDG_CACHE_HOME:-$HOME/.cache}/p"
+}
+
+_p_cache_file_stale() {
+  local file="$1"
+  local ttl="${2:-300}"
+  local mtime now
+
+  [[ -f "$file" ]] || return 0
+  if mtime=$(stat -f %m "$file" 2>/dev/null); then
+    :
+  elif mtime=$(stat -c %Y "$file" 2>/dev/null); then
+    :
+  else
+    return 0
+  fi
+  now=$(date +%s)
+  (( now - mtime > ttl ))
+}
+
+_p_rebuild_completion_caches() {
+  local cache_dir
+  cache_dir="$(_p_cache_dir)"
+  [[ -d "$cache_dir" ]] || mkdir -p "$cache_dir" || return 1
+
+  local all_dirs classified p_tmp sp_tmp status_code
+  all_dirs=$(_p_find_all_dirs) || return 1
+  classified=$(_p_classify_dirs "$all_dirs")
+
+  p_tmp="$(mktemp "$cache_dir/p_completion.XXXXXX")" || return 1
+  sp_tmp="$(mktemp "$cache_dir/sp_completion.XXXXXX")" || {
+    rm -f "$p_tmp"
+    return 1
+  }
+
+  {
+    echo "$classified" | grep '^S ' | sed 's|^S .*/||' | sort
+    echo "$classified" | grep '^P ' | sed 's|^P .*/||' | sort
+  } | awk '!seen[$0]++' > "$p_tmp" &&
+    {
+      if [[ -n "$all_dirs" ]]; then
+        printf '%s\n' "$all_dirs" | sed 's|.*/||' | sort -u
+      fi
+    } > "$sp_tmp" &&
+    mv "$p_tmp" "$cache_dir/p_completion" &&
+    mv "$sp_tmp" "$cache_dir/sp_completion"
+  status_code=$?
+
+  rm -f "$p_tmp" "$sp_tmp"
+  return "$status_code"
+}
+
+_p_refresh_completion_caches_async() {
+  local cache_dir lock_dir
+  cache_dir="$(_p_cache_dir)"
+  [[ -d "$cache_dir" ]] || mkdir -p "$cache_dir" || return 0
+  lock_dir="$cache_dir/completion_refresh.lock"
+
+  if [[ -d "$lock_dir" ]] && [[ -n "$(find "$lock_dir" -mmin +10 2>/dev/null)" ]]; then
+    rmdir "$lock_dir" 2>/dev/null || true
+  fi
+
+  if mkdir "$lock_dir" 2>/dev/null; then
+    (
+      _p_rebuild_completion_caches >/dev/null 2>&1
+      rmdir "$lock_dir" 2>/dev/null || true
+    ) >/dev/null 2>&1 &
+    disown "$!" 2>/dev/null || true
+  fi
+}
+
+_p_ensure_completion_cache() {
+  local cache_file="$1"
+
+  if [[ ! -f "$cache_file" ]]; then
+    _p_rebuild_completion_caches >/dev/null 2>&1
+  elif _p_cache_file_stale "$cache_file"; then
+    _p_refresh_completion_caches_async
+  fi
 }
 
 # Classifies dirs as S (standalone) or P (sub-package)
@@ -66,6 +148,7 @@ Usage:
   p                List all projects
   p --dev [query]  Jump to project and launch AI CLI tool (claude, codex, etc.)
   p --origin       cd to the directory containing this script
+  p --warm-cache   Rebuild tab-completion caches
   p --doctor       Check your p setup for issues
   p --help         Show this help message
   p --version      Show version
@@ -263,6 +346,11 @@ p() {
     echo "→ $(pwd)"
     return 0
   fi
+  if [[ "$1" == "--warm-cache" ]]; then
+    _p_rebuild_completion_caches || return 1
+    echo "p: completion cache rebuilt"
+    return 0
+  fi
   if [[ "$1" == "--dev" ]]; then
     shift
     local dev_tool
@@ -293,7 +381,7 @@ p() {
     query="$2"
   elif [[ -n "$1" && "$1" == -* && "$1" != "--" ]]; then
     echo "p: unknown option: $1" >&2
-    echo "Usage: p [--help | --version | --origin | query]" >&2
+    echo "Usage: p [--help | --version | --origin | --warm-cache | query]" >&2
     return 1
   else
     query="$1"
@@ -398,19 +486,8 @@ _p_completion() {
   [[ -d "$cache_dir" ]] || mkdir -p "$cache_dir"
   local cache_file="$cache_dir/p_completion"
 
-  # Rebuild cache if missing or stale (>5 min)
-  if [[ ! -f "$cache_file" ]] || \
-     [[ -n "$(find "$cache_file" -mmin +5 2>/dev/null)" ]]; then
-    local all_dirs classified
-    all_dirs=$(_p_find_all_dirs) || return 0
-    classified=$(_p_classify_dirs "$all_dirs")
-
-    # Standalone basenames sorted, then sub-package basenames sorted, deduped
-    {
-      echo "$classified" | grep '^S ' | sed 's|^S .*/||' | sort
-      echo "$classified" | grep '^P ' | sed 's|^P .*/||' | sort
-    } | awk '!seen[$0]++' > "$cache_file"
-  fi
+  _p_ensure_completion_cache "$cache_file" || return 0
+  [[ -f "$cache_file" ]] || return 0
 
   local candidates=()
   while IFS= read -r name; do
@@ -479,8 +556,8 @@ EOF
       [[ -z "$dir" ]] && continue
       local name="${dir##*/}"
       [[ "${name,,}" == *"$q"* ]] && matches+=("$dir")
-    done < <(find "$top" -maxdepth 4 -name '.git' -type d \
-      -not -path '*/node_modules/*' \
+    done < <(find "$top" -maxdepth 4 -type d \
+      \( -name node_modules -prune -o -name .git -prune -print \) \
       2>/dev/null | sed 's|/\.git$||')
   done
 
@@ -527,12 +604,8 @@ _sp_completion() {
   [[ -d "$cache_dir" ]] || mkdir -p "$cache_dir"
   local cache_file="$cache_dir/sp_completion"
 
-  if [[ ! -f "$cache_file" ]] || \
-     [[ -n "$(find "$cache_file" -mmin +5 2>/dev/null)" ]]; then
-    find "${P_BASE:-$HOME/projects}" -mindepth 2 -maxdepth 5 -name '.git' -type d \
-      -not -path '*/node_modules/*' \
-      2>/dev/null | sed 's|/\.git$||' | sed 's|.*/||' | sort -u > "$cache_file"
-  fi
+  _p_ensure_completion_cache "$cache_file" || return 0
+  [[ -f "$cache_file" ]] || return 0
 
   local candidates=()
   while IFS= read -r name; do
@@ -744,6 +817,7 @@ _p_load_categories() {
       "libs|flat|Reusable libraries and SDKs"
       "sandbox|sandbox|Experiments and learning"
       "scripts|flat|CLI tools and dev utilities"
+      "mobile|lifecycle|Mobile applications"
       "tools|lifecycle|Desktop and CLI tools"
       "web|lifecycle|Web applications"
     )
@@ -1087,7 +1161,7 @@ EOF
 }
 
 # pconfig - interactive config management for p
-# Usage: pconfig [show|init|add|remove|add-sandbox-type|remove-sandbox-type|path|edit]
+# Usage: pconfig [show|init|add|remove|add-sandbox-type|remove-sandbox-type|rebuild-cache|path|edit]
 
 _pconfig_write() {
   local config="${P_CONFIG:-$HOME/.config/p/categories.conf}"
@@ -1326,6 +1400,7 @@ Usage:
   pconfig add-sandbox-type    Add a sandbox sub-type
   pconfig remove-sandbox-type Remove a sandbox sub-type
   pconfig set-dev-tool [cmd]  Set AI CLI tool for p --dev
+  pconfig rebuild-cache       Rebuild tab-completion caches
   pconfig path                Print config file path
   pconfig edit                Open config in $EDITOR
   pconfig --help              Show this help
@@ -1381,6 +1456,10 @@ EOF
       _p_dev_tool="$tool"
       _pconfig_write
       echo "Dev tool set to: $tool"
+      ;;
+    rebuild-cache)
+      _p_rebuild_completion_caches || return 1
+      echo "Completion cache rebuilt"
       ;;
     path)
       echo "${P_CONFIG:-$HOME/.config/p/categories.conf}"
