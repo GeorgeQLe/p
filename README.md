@@ -150,7 +150,9 @@ Manage categories and sandbox types without hand-editing config files. Also avai
 pconfig              # show current config (same as pconfig show)
 pconfig init         # create config file from defaults
 pconfig add          # add a new category (interactive)
+pconfig add games flat "Game projects"  # add one non-interactively
 pconfig remove       # remove a category (interactive)
+pconfig audit        # compare registered categories with ~/projects
 pconfig add-sandbox-type    # add a sandbox sub-type
 pconfig remove-sandbox-type # remove a sandbox sub-type
 pconfig rebuild-cache       # rebuild tab-completion caches
@@ -219,7 +221,21 @@ sandbox|sandbox|Experiments and learning
 
 sandbox_type:web
 sandbox_type:tools
+
+# Exclude reserved containers from pconfig audit (p/sp still scan them)
+ignore:archive
 ```
+
+### Project directory convention
+
+Treat `$P_BASE` as a registry root, not as a place for standalone repositories:
+
+- top-level directories are category containers such as `apps`, `games`, `libs`, and `tools`
+- `flat` categories store projects at `<category>/<name>`
+- `lifecycle` categories store active projects at `<category>/dev/<name>`
+- reserved containers such as `archive` can be excluded from structure audits with `ignore:<name>`
+
+Run `pconfig audit` after adding or reorganizing directories. It reports missing registered categories, unregistered non-hidden top-level containers (with an inferred registration command), mixed lifecycle layouts, and repositories placed directly in `$P_BASE`. The audit is read-only and exits non-zero while drift remains.
 
 ## How it differs from z / zoxide / autojump
 

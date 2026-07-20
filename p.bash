@@ -856,6 +856,7 @@ complete -F _rp_completion rp
 _p_load_categories() {
   _p_categories=()
   _p_sandbox_types=()
+  _p_ignored_dirs=()
   _p_dev_tool=""
 
   local config="${P_CONFIG:-$HOME/.config/p/categories.conf}"
@@ -867,6 +868,13 @@ _p_load_categories() {
       if [[ "$line" == dev_tool:* ]]; then
         _p_dev_tool="${line#dev_tool:}"
         continue
+      elif [[ "$line" == ignore:* ]]; then
+        local ignore_val="${line#ignore:}"
+        if [[ -z "$ignore_val" ]]; then
+          echo "pconfig: warning: empty ignore entry at $config:$lineno" >&2
+          continue
+        fi
+        _p_ignored_dirs+=("$ignore_val")
       elif [[ "$line" == sandbox_type:* ]]; then
         local st_val="${line#sandbox_type:}"
         if [[ -z "$st_val" ]]; then
@@ -1270,6 +1278,12 @@ HEADER
     for st in "${_p_sandbox_types[@]}"; do
       echo "sandbox_type:$st"
     done
+    if (( ${#_p_ignored_dirs[@]} > 0 )); then
+      echo ""
+      for ignored in "${_p_ignored_dirs[@]}"; do
+        echo "ignore:$ignored"
+      done
+    fi
     if [[ -n "${_p_dev_tool:-}" ]]; then
       echo ""
       echo "dev_tool:$_p_dev_tool"
@@ -1310,6 +1324,16 @@ _pconfig_show() {
   done
   echo ""
 
+  echo "Ignored top-level directories:"
+  if (( ${#_p_ignored_dirs[@]} == 0 )); then
+    echo "  (none)"
+  else
+    for ignored in "${_p_ignored_dirs[@]}"; do
+      echo "  - $ignored"
+    done
+  fi
+  echo ""
+
   echo "Dev tool:"
   if [[ -n "${P_DEV_TOOL:-}" ]]; then
     echo "  $P_DEV_TOOL (from P_DEV_TOOL env var)"
@@ -1336,9 +1360,12 @@ _pconfig_init() {
 _pconfig_add() {
   _p_load_categories
 
-  echo "Add a new category"
-  echo ""
-  read -rp "Category name: " cat_name
+  local cat_name="${1:-}" cat_type="${2:-}" cat_desc="${3:-}"
+  if [[ -z "$cat_name" ]]; then
+    echo "Add a new category"
+    echo ""
+    read -rp "Category name: " cat_name
+  fi
   if [[ -z "$cat_name" ]] || [[ ! "$cat_name" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]]; then
     echo "Error: name must be kebab-case (lowercase letters, numbers, hyphens; no leading/trailing hyphens)." >&2
     return 1
@@ -1351,14 +1378,18 @@ _pconfig_add() {
     fi
   done
 
-  echo "Types: flat, lifecycle, sandbox"
-  read -rp "Category type: " cat_type
+  if [[ -z "$cat_type" ]]; then
+    echo "Types: flat, lifecycle, sandbox"
+    read -rp "Category type: " cat_type
+  fi
   if [[ "$cat_type" != "flat" && "$cat_type" != "lifecycle" && "$cat_type" != "sandbox" ]]; then
     echo "Error: type must be flat, lifecycle, or sandbox." >&2
     return 1
   fi
 
-  read -rp "Description: " cat_desc
+  if [[ -z "$cat_desc" ]]; then
+    read -rp "Description: " cat_desc
+  fi
   if [[ -z "$cat_desc" ]]; then
     echo "Error: description cannot be empty." >&2
     return 1
@@ -1367,6 +1398,83 @@ _pconfig_add() {
   _p_categories+=("$cat_name|$cat_type|$cat_desc")
   _pconfig_write
   echo "Added category: $cat_name ($cat_type)"
+}
+
+_pconfig_audit() {
+  _p_load_categories
+  local base="${P_BASE:-$HOME/projects}"
+  if [[ ! -d "$base" ]]; then
+    echo "pconfig: P_BASE directory does not exist: $base" >&2
+    return 1
+  fi
+
+  local issues=0 entry name remainder type category_path d found ignored inferred child
+  echo "p config audit"
+  echo "  Base: $base"
+  echo ""
+
+  echo "Registered categories:"
+  for entry in "${_p_categories[@]}"; do
+    name="${entry%%|*}"
+    remainder="${entry#*|}"
+    type="${remainder%%|*}"
+    category_path="$base/$name"
+    if [[ ! -d "$category_path" ]]; then
+      echo "  ! $name [$type]: directory is missing"
+      ((issues++))
+    elif [[ "$type" == "lifecycle" && ! -d "$category_path/dev" ]]; then
+      echo "  ! $name [$type]: expected $name/dev"
+      ((issues++))
+    else
+      echo "  ✓ $name [$type]"
+    fi
+
+    if [[ "$type" == "lifecycle" && -d "$category_path/dev" ]]; then
+      while IFS= read -r child; do
+        [[ -n "$child" ]] || continue
+        echo "    ~ legacy project outside dev: ${child#"$base"/}"
+        ((issues++))
+      done < <(find "$category_path" -mindepth 2 -maxdepth 2 -type d -name .git -not -path "$category_path/dev/*" -print 2>/dev/null | sed 's|/\.git$||' | sort)
+    fi
+  done
+  echo ""
+
+  echo "Unregistered top-level directories:"
+  local unregistered=0
+  while IFS= read -r d; do
+    name="${d##*/}"
+    [[ "$name" == .* ]] && continue
+    found=false
+    for entry in "${_p_categories[@]}"; do
+      [[ "${entry%%|*}" == "$name" ]] && found=true && break
+    done
+    [[ "$found" == true ]] && continue
+    ignored=false
+    for entry in "${_p_ignored_dirs[@]}"; do
+      [[ "$entry" == "$name" ]] && ignored=true && break
+    done
+    [[ "$ignored" == true ]] && continue
+
+    ((unregistered++))
+    ((issues++))
+    if [[ -d "$d/.git" ]]; then
+      echo "  ! $name: repository is at the projects root; move it under a category"
+    else
+      inferred="flat"
+      [[ -d "$d/dev" ]] && inferred="lifecycle"
+      echo "  + $name: inferred $inferred"
+      echo "    register: pconfig add $name $inferred \"$name projects\""
+    fi
+  done < <(_p_find_top_level_dirs "$base")
+  (( unregistered > 0 )) || echo "  (none)"
+  echo ""
+
+  if (( issues == 0 )); then
+    echo "✓ Project structure matches the registry"
+    return 0
+  fi
+  echo "Found $issues structure issue(s)."
+  return 1
 }
 
 _pconfig_remove() {
@@ -1474,8 +1582,9 @@ pconfig - manage p configuration
 Usage:
   pconfig [show]              Display current categories and sandbox types
   pconfig init                Create config file from defaults
-  pconfig add                 Add a new category (interactive)
+  pconfig add [NAME TYPE DESC] Add a category (interactive or scripted)
   pconfig remove              Remove a category (interactive)
+  pconfig audit               Compare the registry with P_BASE
   pconfig add-sandbox-type    Add a sandbox sub-type
   pconfig remove-sandbox-type Remove a sandbox sub-type
   pconfig set-dev-tool [cmd]  Set AI CLI tool for p --dev
@@ -1493,10 +1602,14 @@ EOF
       _pconfig_init
       ;;
     add)
-      _pconfig_add
+      shift
+      _pconfig_add "$@"
       ;;
     remove)
       _pconfig_remove
+      ;;
+    audit)
+      _pconfig_audit
       ;;
     add-sandbox-type)
       _pconfig_add_sandbox_type

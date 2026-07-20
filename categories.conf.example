@@ -8,6 +8,8 @@
 #   sandbox    — prompts for sub-type, goes in sandbox/<type>/<name>
 #
 # Lines starting with "sandbox_type:" define sandbox sub-categories.
+# Lines starting with "ignore:" exclude reserved top-level directories from
+# `pconfig audit` (they are still scanned by p/sp for git repositories).
 # Lines starting with "#" are comments. Blank lines are ignored.
 #
 # Valid types: flat, lifecycle, sandbox
@@ -26,6 +28,9 @@ web|lifecycle|Web applications
 
 sandbox_type:web
 sandbox_type:tools
+
+# Reserved storage, not a destination for new projects.
+ignore:archive
 
 # AI CLI tool for `p --dev` (claude, codex, gemini, or any command)
 dev_tool:claude

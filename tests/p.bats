@@ -807,6 +807,57 @@ CONF
   [[ "$output" == *"must be flat, lifecycle, or sandbox"* ]]
 }
 
+@test "pconfig add supports non-interactive arguments" {
+  rm -f "$P_CONFIG"
+  run _p pconfig add games flat "Game projects"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Added category: games (flat)"* ]]
+  grep -Fxq "games|flat|Game projects" "$P_CONFIG"
+}
+
+# ============================================================
+# pconfig audit
+# ============================================================
+
+@test "pconfig audit succeeds when structure matches registry" {
+  mkdir -p "$P_BASE/libs" "$P_BASE/.codex"
+  printf 'libs|flat|Libraries\nignore:archive\n' > "$P_CONFIG"
+  mkdir -p "$P_BASE/archive"
+
+  run _p pconfig audit
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"matches the registry"* ]]
+  [[ "$output" != *"archive: inferred"* ]]
+}
+
+@test "pconfig audit reports unregistered containers and root repositories" {
+  mkdir -p "$P_BASE/libs" "$P_BASE/games" "$P_BASE/orphan/.git"
+  printf 'libs|flat|Libraries\n' > "$P_CONFIG"
+
+  run _p pconfig audit
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"games: inferred flat"* ]]
+  [[ "$output" == *"pconfig add games flat"* ]]
+  [[ "$output" == *"orphan: repository is at the projects root"* ]]
+}
+
+@test "pconfig audit infers lifecycle categories and reports legacy projects" {
+  mkdir -p "$P_BASE/web/dev" "$P_BASE/web/legacy/.git" "$P_BASE/mobile/dev"
+  printf 'web|lifecycle|Web apps\n' > "$P_CONFIG"
+
+  run _p pconfig audit
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"legacy project outside dev: web/legacy"* ]]
+  [[ "$output" == *"mobile: inferred lifecycle"* ]]
+}
+
+@test "pconfig preserves ignored directories when rewriting config" {
+  printf 'libs|flat|Libraries\nignore:archive\n' > "$P_CONFIG"
+  run _p pconfig add games flat "Game projects"
+  [ "$status" -eq 0 ]
+  grep -Fxq "ignore:archive" "$P_CONFIG"
+}
+
 # ============================================================
 # Config round-trip: written config is loadable
 # ============================================================
