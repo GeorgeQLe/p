@@ -5,7 +5,9 @@
 _P_VERSION="1.0.0"
 _P_HISTORY_MAX=50
 _P_COMPLETION_STALE_CHECK_INTERVAL=60
-_p_completion_last_stale_check=${SECONDS:-0}
+# Make the first completion request check cache age immediately. Later checks
+# remain throttled so repeated Tab presses stay on the fast path.
+_p_completion_last_stale_check=$(( ${SECONDS:-0} - _P_COMPLETION_STALE_CHECK_INTERVAL ))
 
 # Ensure zsh completion system is available
 if ! typeset -f compdef > /dev/null 2>&1; then

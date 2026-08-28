@@ -62,7 +62,7 @@ p --version    # show version
 p config show  # manage configuration (alias for pconfig)
 ```
 
-Detects projects by `.git` directory presence. Directory scans run across top-level categories in parallel, defaulting to 4 jobs; set `P_FIND_PARALLELISM` to tune this. Tab completion uses a 5-minute cache; stale caches are served immediately while a background refresh rebuilds suggestions. If no completion cache exists yet, Tab starts a background rebuild and returns without blocking; run `p --warm-cache` when you want suggestions ready immediately.
+Detects projects by `.git` directory presence. Directory scans run across top-level categories in parallel, defaulting to 4 jobs; set `P_FIND_PARALLELISM` to tune this. Tab completion uses a 5-minute cache. The first Tab press after shell initialization checks the cache age; stale caches are served immediately while a background refresh rebuilds suggestions, and later age checks are throttled to once per minute. If no completion cache exists yet, Tab starts a background rebuild and returns without blocking; run `p --warm-cache` when you want suggestions ready immediately.
 
 ### `sp` — project search
 

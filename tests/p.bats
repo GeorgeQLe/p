@@ -1671,6 +1671,46 @@ CONF
 }
 
 # ============================================================
+# Completion cache behavior (Bash and Zsh)
+# ============================================================
+
+_run_first_stale_cache_check() {
+  if [[ "$SHELL_VARIANT" == "zsh" ]]; then
+    zsh -f -c "
+      compdef() { :; }
+      autoload() { :; }
+      export P_BASE='$P_BASE' P_CONFIG='$P_CONFIG' HOME='$HOME'
+      source '$SOURCE_FILE'
+      _p_cache_file_stale() { return 0; }
+      _p_refresh_completion_caches_async() { printf 'ASYNC_REFRESH\\n'; }
+      _p_ensure_completion_cache '$HOME/.cache/p/p_completion' async
+      _p_ensure_completion_cache '$HOME/.cache/p/p_completion' async
+    "
+  else
+    local bash_bin="${BASH_4_BIN:-/opt/homebrew/bin/bash}"
+    "$bash_bin" -c "
+      complete() { :; }
+      export P_BASE='$P_BASE' P_CONFIG='$P_CONFIG' HOME='$HOME'
+      source '$SOURCE_FILE'
+      _p_cache_file_stale() { return 0; }
+      _p_refresh_completion_caches_async() { printf 'ASYNC_REFRESH\\n'; }
+      _p_ensure_completion_cache '$HOME/.cache/p/p_completion' async
+      _p_ensure_completion_cache '$HOME/.cache/p/p_completion' async
+    "
+  fi
+}
+
+@test "first completion checks stale cache immediately and keeps later checks throttled" {
+  mkdir -p "$HOME/.cache/p"
+  printf '%s\n' "stale-entry" > "$HOME/.cache/p/p_completion"
+
+  run _run_first_stale_cache_check
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "ASYNC_REFRESH" ]
+}
+
+# ============================================================
 # Completion functions (bash-only — zsh uses compadd)
 # ============================================================
 

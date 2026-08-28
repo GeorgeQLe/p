@@ -89,3 +89,10 @@
 - Added `P_FIND_PARALLELISM` to tune the number of concurrent category scans, defaulting to 4
 - Preserved documented "under P_BASE" behavior for hidden top-level directories and for `P_BASE` itself when it is a git project
 - Timing: `_p_find_all_dirs` measured about 110-125 ms locally after the hidden-directory-safe parallelization fix
+
+## 2026-08-28 — Check stale completion cache on first Tab
+- Found that initializing the stale-check timestamp to the current shell time delayed the first cache-age check by up to 60 seconds
+- Changed Bash and Zsh initialization so the first completion request checks cache age immediately while later checks remain throttled
+- Kept completion non-blocking: stale suggestions are still served while the cache rebuilds asynchronously
+- Added cross-shell regression coverage and documented the first-Tab behavior
+- Validation: all 156 tests pass in both Bash and Zsh; Bash ShellCheck and Zsh syntax validation pass
