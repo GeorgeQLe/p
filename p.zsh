@@ -168,11 +168,12 @@ _p_refresh_completion_caches_async() {
   fi
 
   if mkdir "$lock_dir" 2>/dev/null; then
+    # `&!` keeps the refresh out of zsh's job table from the start; a separate
+    # `disown` leaves a race where a fast refresh can print over tab completion.
     (
       _p_rebuild_completion_caches >/dev/null 2>&1
       rmdir "$lock_dir" 2>/dev/null || true
-    ) >/dev/null 2>&1 &
-    disown "$!" 2>/dev/null || true
+    ) >/dev/null 2>&1 &!
   fi
 }
 
