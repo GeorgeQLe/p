@@ -28,8 +28,9 @@ _p_find_parallelism() {
 _p_find_git_dirs() {
   local root="$1"
   local maxdepth="$2"
-  find "$root" -maxdepth "$maxdepth" -type d \
-    \( -name node_modules -prune -o -name .git -prune -print \) \
+  find "$root" -maxdepth "$maxdepth" \
+    \( -type d -name node_modules -prune \) -o \
+    \( -name .git \( -type d -o -type f \) -print -prune \) \
     2>/dev/null \
   | sed 's|/\.git$||'
 }
@@ -95,7 +96,7 @@ _p_find_all_dirs() {
 
   {
     [[ -d "$base/.git" ]] && printf '%s\n' "$base"
-    _p_find_git_dirs_parallel 4 "${roots[@]}"
+    _p_find_git_dirs_parallel 6 "${roots[@]}"
   } | sort -u
 }
 
@@ -498,15 +499,21 @@ p() {
   if [[ -n "$query" ]]; then
     local q="${query,,}"
 
-    # Phase 1: basename match
+    local compact_query="${q//[-_]/}"
+
+    # Phase 1: basename match (also accept omitted name separators)
     local sa_basename=() sp_basename=()
     for d in "${standalone[@]}"; do
       local name="${d##*/}"
-      [[ "${name,,}" == *"$q"* ]] && sa_basename+=("$d")
+      local compact_name="${name,,}"
+      compact_name="${compact_name//[-_]/}"
+      [[ "${name,,}" == *"$q"* || ( -n "$compact_query" && "$compact_name" == *"$compact_query"* ) ]] && sa_basename+=("$d")
     done
     for d in "${subpkg[@]}"; do
       local name="${d##*/}"
-      [[ "${name,,}" == *"$q"* ]] && sp_basename+=("$d")
+      local compact_name="${name,,}"
+      compact_name="${compact_name//[-_]/}"
+      [[ "${name,,}" == *"$q"* || ( -n "$compact_query" && "$compact_name" == *"$compact_query"* ) ]] && sp_basename+=("$d")
     done
 
     if (( ${#sa_basename[@]} + ${#sp_basename[@]} > 0 )); then
@@ -634,13 +641,13 @@ EOF
     [[ -d "$d" ]] && top_dirs+=("$d")
   done < <(_p_find_top_level_dirs "$base")
 
-  # Search within each category (depth 2-3 to cover flat + lifecycle + sandbox)
+  # Include nested clients and Git submodules within each category.
   local matches=()
   while IFS= read -r dir; do
     [[ -z "$dir" ]] && continue
     local name="${dir##*/}"
     [[ "${name,,}" == *"$q"* ]] && matches+=("$dir")
-  done < <(_p_find_git_dirs_parallel 4 "${top_dirs[@]}")
+  done < <(_p_find_git_dirs_parallel 6 "${top_dirs[@]}")
 
   # Deduplicate via sort -u
   local unique=()

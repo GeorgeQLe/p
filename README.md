@@ -272,3 +272,10 @@ shellcheck -s bash -e SC2168,SC2296,SC2299,SC2300,SC2312 p.zsh
 ## License
 
 [MIT](LICENSE)
+
+### Nested repositories
+
+Discovery includes Git directories and Git files (submodules and linked worktrees),
+through six directory levels beneath the projects root. Both `p` and `sp` include
+nested client repositories in search and completion. `p` also accepts names with
+hyphens or underscores omitted: `p gblockparty` matches `gblock-party-redux`.

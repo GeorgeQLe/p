@@ -159,3 +159,17 @@ Address all findings from the expert code review, sequenced by user impact: firs
 - All phases must pass shellcheck (`shellcheck -s bash p.bash` and the zsh variant)
 ### Dual-file Maintenance
 - Every code change must be applied to both `p.bash` and `p.zsh` with appropriate shell-specific syntax adjustments
+
+## T9 canonical checkout routing — 2026-09-15
+
+User approved consolidating Chromux under GBlockParty Redux and repairing p routing.
+- [x] Recognize .git files and nested client repositories in discovery.
+- [x] Match product names with omitted hyphens/underscores.
+- [x] Verify Bash/Zsh tests, lint, real T9 routes, and completion refresh.
+
+Verification: Bash Bats 158 passed; Zsh Bats 148 passed / 10 Bash-only skips.
+Bash ShellCheck, native Zsh syntax, and diff checks passed. ShellCheck's Bash
+parser rejects the pre-existing Zsh `&!` operator, so Zsh validation uses the
+native parser and suite. Live `p chromux` and `p gblockparty` resolved uniquely
+to the retained T9 submodule and Redux parent. Completion caches rebuilt;
+`rp --prune` removed seven stale history entries.

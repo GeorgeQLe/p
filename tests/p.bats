@@ -483,8 +483,8 @@ CONF
   [[ "$output" == *"deep-proj"* ]]
 }
 
-@test "depth-6 boundary: project beyond depth 5 is NOT found" {
-  mkdir -p "$P_BASE/a/b/c/d/e/too-deep/.git"
+@test "depth-7 boundary: project beyond discovery limit is NOT found" {
+  mkdir -p "$P_BASE/a/b/c/d/e/f/too-deep/.git"
   run _p p too-deep
   [ "$status" -ne 0 ]
   [[ "$output" == *"No projects"* ]]
@@ -1827,4 +1827,24 @@ _run_completion() {
   run _run_completion _rp_completion rp ""
   [ "$status" -eq 0 ]
   [[ -z "$output" ]]
+}
+
+@test "p discovers nested client submodules with git files" {
+  _make_project "web/dev/gblock-party-redux"
+  mkdir -p "$P_BASE/web/dev/gblock-party-redux/clients/chromux-desktop"
+  printf 'gitdir: ../../.git/modules/clients/chromux-desktop\n' > "$P_BASE/web/dev/gblock-party-redux/clients/chromux-desktop/.git"
+  run _p p chromux
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"→ $P_BASE/web/dev/gblock-party-redux/clients/chromux-desktop"* ]]
+  run _p p --warm-cache
+  [ "$status" -eq 0 ]
+  run cat "$HOME/.cache/p/p_completion"
+  [[ "$output" == *"chromux-desktop"* ]]
+}
+
+@test "p accepts product names without directory separators" {
+  _make_project "web/dev/gblock-party-redux"
+  run _p p gblockparty
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"→ $P_BASE/web/dev/gblock-party-redux"* ]]
 }
